@@ -56,18 +56,28 @@ console.log("Bot Started");
 
 /*
 ========================================
-១. បន្ថែម MENU BUTTON (នៅខាងឆ្វេង BOX MESSAGE)
+១. កំណត់ BUTTON MENU ខាងឆ្វេង BOX MESSAGE
 ========================================
 */
 bot.setMyCommands([
     { command: "start", description: "បើកម៉ឺនុយមេ / បង្ហាញប៊ូតុងបញ្ជា" },
-    { command: "listworkers", description: "មើលបញ្ជីឈ្មោះ និងប្រាក់ថ្ងៃកម្មករ" },
-    { command: "report", description: "មើលរបាយការណ៍ប្រាក់ខែសរុប" },
-    { command: "អវត្តមាន", description: "កត់ត្រាការឈប់សម្រាក" },
-    { command: "មើលអវត្តមាន", description: "មើលប្រវត្តិច្បាប់កម្មករ" }
+    { command: "addworker", description: "➕ បន្ថែមកម្មករថ្មី" },
+    { command: "borrow", description: "💸 កត់ត្រាកម្មករបើកលុយមុន" },
+    { command: "deleteworker", description: "🗑 លុបឈ្មោះកម្មករ" },
+    { command: "listworkers", description: "👷 មើលបញ្ជីឈ្មោះកម្មករ" },
+    { command: "report", description: "💰 មើលរបាយការណ៍ប្រាក់ខែសរុប" },
+    { command: "absence", description: "📝 កត់ត្រាការឈប់សម្រាក (អវត្តមាន)" },
+    { command: "view_absence", description: "📋 មើលប្រវត្តិច្បាប់កម្មករ" }
 ]).then(() => {
     console.log("Telegram Command Menu set successfully");
 });
+
+/*
+========================================
+STATE MANAGEMENT
+========================================
+*/
+const userSessions = {};
 
 /*
 ========================================
@@ -224,21 +234,31 @@ function saveAbsence(workerId, type) {
 
 /*
 ========================================
-២. មុខងារបង្ហាញ MAIN KEYBOARD (ប៊ូតុងជាប់ប្រអប់សារ)
+២. វត្ថុរក្សាទម្រង់ប៊ូតុង KEYBOARD មេ (សម្រាប់ហៅប្រើគ្រប់សារ)
 ========================================
 */
-function sendMainKeyboard(chatId, textMessage) {
-    bot.sendMessage(chatId, textMessage, {
+const MAIN_KEYBOARD_MARKUP = {
+    keyboard: [
+        [{ text: "📝 កត់អវត្តមាន" }, { text: "📋 មើលអវត្តមាន" }],
+        [{ text: "💰 មើលរបាយការណ៍" }, { text: "👷 បញ្ជីកម្មករ" }],
+        [{ text: "✍️ បន្ថែមកម្មករ" }, { text: "💸 បើកលុយមុន" }]
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: false
+};
+
+// មុខងារផ្ញើសាររួម ដោយភ្ជាប់ប៊ូតុងមេទៅជាមួយជានិច្ច
+function sendMessageWithKeyboard(chatId, textMessage, options = {}) {
+    const finalOptions = {
+        ...options,
         reply_markup: {
-            keyboard: [
-                [{ text: "📝 កត់អវត្តមាន" }, { text: "📋 មើលអវត្តមាន" }],
-                [{ text: "💰 មើលរបាយការណ៍" }, { text: "👷 បញ្ជីកម្មករ" }],
-                [{ text: "✍️ បន្ថែមកម្មករ (វាយថែម)" }, { text: "💸 បើកលុយមុន (វាយថែម)" }]
-            ],
-            resize_keyboard: true, // ធ្វើឱ្យប៊ូតុងបង្រួមស្អាតសមល្មមនឹងអេក្រង់
+            ...options.reply_markup,
+            keyboard: MAIN_KEYBOARD_MARKUP.keyboard,
+            resize_keyboard: true,
             one_time_keyboard: false
         }
-    });
+    };
+    bot.sendMessage(chatId, textMessage, finalOptions);
 }
 
 /*
@@ -249,48 +269,120 @@ START
 
 bot.onText(/^\/start$/, async (msg) => {
     if (!isOwner(msg)) return;
+    delete userSessions[msg.chat.id];
 
-    const text = `👷 សួស្តីម្ចាស់ហាង! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងកម្មករ។\n\nឥឡូវនេះ លោកអ្នកអាចប្រើប្រាស់ប៊ូតុង Menu នៅខាងឆ្វេងប្រអប់សារ ឬចុចប៊ូតុងបញ្ជាធំៗនៅខាងក្រោមបានយ៉ាងងាយស្រួល។`;
-    sendMainKeyboard(msg.chat.id, text);
+    const text = `👷 សួស្តីម្ចាស់ហាង! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងកម្មករ។\n\nលោកអ្នកអាចចុចប៊ូតុង "Menu" នៅខាងឆ្វេងប្រអប់សារ ឬប្រើប្រាស់ប៊ូតុងបញ្ជាធំៗនៅខាងក្រោមបានយ៉ាងងាយស្រួល។`;
+    sendMessageWithKeyboard(msg.chat.id, text);
 });
 
-// ចាប់យកពាក្យបញ្ជាពីការចុចប៊ូតុង Keyboard ធំៗ
+/*
+========================================
+ពាក្យបញ្ជាពី MENU ដែលត្រូវបញ្ចូល VALUE
+========================================
+*/
+
+bot.onText(/^\/addworker$/, msg => {
+    if (!isOwner(msg)) return;
+    userSessions[msg.chat.id] = { state: "AWAITING_WORKER_DETAILS" };
+    sendMessageWithKeyboard(msg.chat.id, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី៖\n\n*ទម្រង់វាយ៖* `ឈ្មោះ ប្រាក់ឈ្នួល`\n*ឧទាហរណ៍៖* `សុខា 80000`", { parse_mode: "Markdown" });
+});
+
+bot.onText(/^\/borrow$/, msg => {
+    if (!isOwner(msg)) return;
+    userSessions[msg.chat.id] = { state: "AWAITING_BORROW_DETAILS" };
+    sendMessageWithKeyboard(msg.chat.id, "✍️ សូមវាយបញ្ចូល ID កម្មករ និងចំនួនលុយដែលបើកមុន៖\n\n*ទម្រង់វាយ៖* `ID ចំនួនលុយ`\n*ឧទាហរណ៍៖* `1 50000`", { parse_mode: "Markdown" });
+});
+
+bot.onText(/^\/deleteworker$/, msg => {
+    if (!isOwner(msg)) return;
+    userSessions[msg.chat.id] = { state: "AWAITING_DELETE_ID" };
+    sendMessageWithKeyboard(msg.chat.id, "✍️ សូមវាយបញ្ចូល *ID* របស់កម្មករដែលអ្នកចង់លុប៖\n\n*ឧទាហរណ៍៖* `1`", { parse_mode: "Markdown" });
+});
+
+bot.onText(/^\/listworkers$/, msg => { if (isOwner(msg)) { delete userSessions[msg.chat.id]; sendWorkersList(msg.chat.id); } });
+bot.onText(/^\/report$/, msg => { if (isOwner(msg)) { delete userSessions[msg.chat.id]; sendWeeklyReport(msg.chat.id); } });
+bot.onText(/^\/absence$/, msg => { if (isOwner(msg)) { delete userSessions[msg.chat.id]; sendAbsenceMenu(msg.chat.id); } });
+bot.onText(/^\/view_absence$/, msg => { if (isOwner(msg)) { delete userSessions[msg.chat.id]; sendViewAbsenceMenu(msg.chat.id); } });
+
+bot.onText(/^\/អវត្តមាន$/, msg => { if (isOwner(msg)) { delete userSessions[msg.chat.id]; sendAbsenceMenu(msg.chat.id); } });
+bot.onText(/^\/មើលអវត្តមាន$/, msg => { if (isOwner(msg)) { delete userSessions[msg.chat.id]; sendViewAbsenceMenu(msg.chat.id); } });
+
+/*
+========================================
+៣. ដំណើរការចាប់សារទូទៅ និងប៊ូតុងបញ្ជា
+========================================
+*/
 bot.on("message", (msg) => {
     if (!isOwner(msg)) return;
-    const text = msg.text;
+    const text = msg.text ? msg.text.trim() : "";
+
+    if (text.startsWith("/")) return;
+
+    const chatId = msg.chat.id;
+    const session = userSessions[chatId];
 
     if (text === "📝 កត់អវត្តមាន") {
-        sendAbsenceMenu(msg.chat.id);
+        delete userSessions[chatId];
+        return sendAbsenceMenu(chatId);
     } else if (text === "📋 មើលអវត្តមាន") {
-        sendViewAbsenceMenu(msg.chat.id);
+        delete userSessions[chatId];
+        return sendViewAbsenceMenu(chatId);
     } else if (text === "💰 មើលរបាយការណ៍") {
-        sendWeeklyReport(msg.chat.id);
+        delete userSessions[chatId];
+        return sendWeeklyReport(chatId);
     } else if (text === "👷 បញ្ជីកម្មករ") {
-        sendWorkersList(msg.chat.id);
-    } else if (text === "✍️ បន្ថែមកម្មករ (វាយថែម)") {
-        // មុខងាររុញពាក្យបញ្ជាចូលប្រអប់សារ ដើម្បីឱ្យម្ចាស់បំពេញ Value ថែម
-        bot.sendMessage(msg.chat.id, "👉 សូមវាយបន្ថែមឈ្មោះ និងប្រាក់ថ្ងៃ តាមទម្រង់ខាងក្រោម៖\n\n`/add ឈ្មោះ ប្រាក់ថ្ងៃ`", { parse_mode: "Markdown" });
-    } else if (text === "💸 បើកលុយមុន (វាយថែម)") {
-        bot.sendMessage(msg.chat.id, "👉 សូមវាយបន្ថែម ID និងចំនួនលុយ តាមទម្រង់ខាងក្រោម៖\n\n`/borrow ID ចំនួនលុយ`", { parse_mode: "Markdown" });
+        delete userSessions[chatId];
+        return sendWorkersList(chatId);
+    } else if (text === "✍️ បន្ថែមកម្មករ") {
+        userSessions[chatId] = { state: "AWAITING_WORKER_DETAILS" };
+        return sendMessageWithKeyboard(chatId, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី៖\n\n*ទម្រង់វាយ៖* `ឈ្មោះ ប្រាក់ឈ្នួល`\n*ឧទាហរណ៍៖* `សុខា 80000`", { parse_mode: "Markdown" });
+    } else if (text === "💸 បើកលុយមុន") {
+        userSessions[chatId] = { state: "AWAITING_BORROW_DETAILS" };
+        return sendMessageWithKeyboard(chatId, "✍️ សូមវាយបញ្ចូល ID កម្មករ និងចំនួនលុយដែលបើកមុន៖\n\n*ទម្រង់វាយ៖* `ID ចំនួនលុយ`\n*ឧទាហរណ៍៖* `1 50000`", { parse_mode: "Markdown" });
+    }
+
+    if (session) {
+        if (session.state === "AWAITING_WORKER_DETAILS") {
+            const match = text.match(/^(.+)\s+(\d+)$/);
+            if (!match) {
+                return sendMessageWithKeyboard(chatId, "❌ ទម្រង់វាយមិនត្រឹមត្រូវទេ! សូមវាយម្តងទៀតតាមទម្រង់៖ `ឈ្មោះ ប្រាក់ថ្ងៃ` (ឧទាហរណ៍៖ `សុខា 80000`)");
+            }
+            const name = match[1].trim();
+            const salary = Number(match[2]);
+            
+            delete userSessions[chatId];
+            return handleAddWorker(msg, name, salary);
+        }
+
+        if (session.state === "AWAITING_BORROW_DETAILS") {
+            const match = text.match(/^(\d+)\s+(\d+)$/);
+            if (!match) {
+                return sendMessageWithKeyboard(chatId, "❌ ទម្រង់វាយមិនត្រឹមត្រូវទេ! សូមវាយម្តងទៀតតាមទម្រង់៖ `ID ចំនួនលុយ` (ឧទាហរណ៍៖ `1 50000`)");
+            }
+            const workerId = Number(match[1]);
+            const amount = Number(match[2]);
+
+            delete userSessions[chatId];
+            return handleBorrow(msg, workerId, amount);
+        }
+
+        if (session.state === "AWAITING_DELETE_ID") {
+            const workerId = Number(text);
+            if (isNaN(workerId)) {
+                return sendMessageWithKeyboard(chatId, "❌ សូមវាយបញ្ចូលតែលេខ ID របស់កម្មករប៉ុណ្ណោះ (ឧទាហរណ៍៖ `1`)");
+            }
+            
+            delete userSessions[chatId];
+            return askDeleteConfirmation(chatId, workerId);
+        }
     }
 });
 
 /*
 ========================================
-ADD WORKER
+ADD WORKER CORE FUNCTION
 ========================================
 */
-
-bot.onText(/^\/addworker (.+) (\d+)$/, (msg, match) => {
-    if (!isOwner(msg)) return;
-    handleAddWorker(msg, match[1].trim(), Number(match[2]));
-});
-
-bot.onText(/^\/add (.+) (\d+)$/, (msg, match) => {
-    if (!isOwner(msg)) return;
-    handleAddWorker(msg, match[1].trim(), Number(match[2]));
-});
-
 function handleAddWorker(msg, name, salary) {
     const workers = readWorkers();
     const newId = workers.length > 0 ? Math.max(...workers.map(w => w.id)) + 1 : 1;
@@ -298,7 +390,7 @@ function handleAddWorker(msg, name, salary) {
     workers.push({ id: newId, name, dailySalary: salary });
     saveWorkers(workers);
 
-    bot.sendMessage(
+    sendMessageWithKeyboard(
         msg.chat.id,
         `✅ បានបន្ថែមកម្មករជោគជ័យ\n\n🆔 ID: ${newId}\n👤 ឈ្មោះ: ${name}\n💰 ប្រាក់ថ្ងៃ: ${salary.toLocaleString()}៛`
     );
@@ -306,50 +398,43 @@ function handleAddWorker(msg, name, salary) {
 
 /*
 ========================================
-LIST WORKERS
+LIST WORKERS CORE FUNCTION
 ========================================
 */
-
 function sendWorkersList(chatId) {
     const workers = readWorkers();
     if (workers.length === 0) {
-        return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករនៅក្នុងប្រព័ន្ធឡើយ។");
+        return sendMessageWithKeyboard(chatId, "❌ មិនទាន់មានកម្មករនៅក្នុងប្រព័ន្ធឡើយ។");
     }
 
-    let text = " Worker List (បញ្ជីកម្មករ និងប្រាក់ថ្ងៃ)\n\n";
+    let text = "👷 បញ្ជីកម្មករ និងប្រាក់ថ្ងៃ\n\n";
     workers.forEach(worker => {
         text += `🆔 ID: ${worker.id} | 👤 ${worker.name}\n`;
         text += `💰 ប្រាក់ប្រចាំថ្ងៃ: ${worker.dailySalary.toLocaleString()}៛\n\n`;
     });
-    bot.sendMessage(chatId, text);
+    sendMessageWithKeyboard(chatId, text);
 }
-
-bot.onText(/^\/listworkers$/, msg => {
-    if (!isOwner(msg)) return;
-    sendWorkersList(msg.chat.id);
-});
 
 /*
 ========================================
-DELETE WORKER
+DELETE WORKER CONFIRMATION
 ========================================
 */
-
-bot.onText(/^\/deleteworker (\d+)$/, (msg, match) => {
-    if (!isOwner(msg)) return;
-
-    const workerId = Number(match[1]);
+function askDeleteConfirmation(chatId, workerId) {
     const worker = getWorkerById(workerId);
-
     if (!worker) {
-        return bot.sendMessage(msg.chat.id, "❌ រកមិនឃើញកម្មករអាយឌីនេះទេ។");
+        return sendMessageWithKeyboard(chatId, "❌ រកមិនឃើញកម្មករអាយឌីនេះទេ។");
     }
 
+    // សារសួរបញ្ជាក់នេះប្រើ Inline Keyboard (ប៉ុន្តែប៊ូតុងធំខាងក្រោមក៏នៅតែមិនបាត់ដែរ)
     bot.sendMessage(
-        msg.chat.id,
+        chatId,
         `⚠️ តើអ្នកពិតជាចង់លុបកម្មករឈ្មោះ "${worker.name}" (ID: ${workerId}) មែនទេ?`,
         {
             reply_markup: {
+                keyboard: MAIN_KEYBOARD_MARKUP.keyboard,
+                resize_keyboard: true,
+                one_time_keyboard: false,
                 inline_keyboard: [
                     [
                         { text: "❌ យល់ព្រមលុប", callback_data: `confirm_del_${workerId}` },
@@ -359,20 +444,22 @@ bot.onText(/^\/deleteworker (\d+)$/, (msg, match) => {
             }
         }
     );
+}
+
+bot.onText(/^\/deleteworker (\d+)$/, (msg, match) => {
+    if (!isOwner(msg)) return;
+    askDeleteConfirmation(msg.chat.id, Number(match[1]));
 });
 
 /*
 ========================================
-BORROW / ADVANCE MONEY
+BORROW MONEY CORE FUNCTION
 ========================================
 */
-
 function handleBorrow(msg, workerId, amount) {
-    if (!isOwner(msg)) return;
-
     const worker = getWorkerById(workerId);
     if (!worker) {
-        return bot.sendMessage(msg.chat.id, "❌ មិនមានកម្មករអាយឌីនេះទេ។");
+        return sendMessageWithKeyboard(msg.chat.id, "❌ មិនមានកម្មករអាយឌីនេះទេ។");
     }
 
     const borrows = readBorrows();
@@ -382,58 +469,51 @@ function handleBorrow(msg, workerId, amount) {
     borrows[workerId] += amount;
     saveBorrows(borrows);
 
-    bot.sendMessage(
+    sendMessageWithKeyboard(
         msg.chat.id,
         `💸 កត់ត្រាលុយបុរេប្រទាន (បើកមុន)\n\nកម្មករ៖ ${worker.name}\nបានបើកមុន៖ ${amount.toLocaleString()}៛\nជំពាក់សរុបសប្តាហ៍នេះ៖ ${borrows[workerId].toLocaleString()}៛`
     );
 }
 
 bot.onText(/^\/borrow (\d+) (\d+)$/, (msg, match) => {
-    handleBorrow(msg, Number(match[1]), Number(match[2]));
-});
-
-bot.onText(/^\/បុរេប្រទាន (\d+) (\d+)$/, (msg, match) => {
+    if (!isOwner(msg)) return;
     handleBorrow(msg, Number(match[1]), Number(match[2]));
 });
 
 /*
 ========================================
-ABSENCE MENU (ប៊ូតុងបង្ហាញតម្លៃស្រាប់ៗ Value)
+ABSENCE MENU
 ========================================
 */
-
 function sendAbsenceMenu(chatId) {
     const workers = readWorkers();
     if (workers.length === 0) {
-        return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
+        return sendMessageWithKeyboard(chatId, "❌ មិនទាន់មានកម្មករទេ។");
     }
 
-    // កែសម្រួល៖ បង្ហាញទាំងឈ្មោះ និងតម្លៃប្រាក់ប្រចាំថ្ងៃ (Value) នៅលើប៊ូតុងតែម្តង ដើម្បីងាយស្រួលមើល
     const buttons = workers.map(worker => [{
         text: `👤 ${worker.name} (ប្រាក់ថ្ងៃ: ${worker.dailySalary.toLocaleString()}៛)`,
         callback_data: `worker_${worker.id}`
     }]);
 
     bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដើម្បីកត់អវត្តមាន៖", {
-        reply_markup: { inline_keyboard: buttons }
+        reply_markup: { 
+            keyboard: MAIN_KEYBOARD_MARKUP.keyboard,
+            resize_keyboard: true,
+            inline_keyboard: buttons 
+        }
     });
 }
-
-bot.onText(/^\/អវត្តមាន$/, msg => {
-    if (!isOwner(msg)) return;
-    sendAbsenceMenu(msg.chat.id);
-});
 
 /*
 ========================================
 VIEW ABSENCE MENU
 ========================================
 */
-
 function sendViewAbsenceMenu(chatId) {
     const workers = readWorkers();
     if (workers.length === 0) {
-        return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
+        return sendMessageWithKeyboard(chatId, "❌ មិនទាន់មានកម្មករទេ។");
     }
 
     const buttons = workers.map(worker => [{
@@ -442,27 +522,24 @@ function sendViewAbsenceMenu(chatId) {
     }]);
 
     bot.sendMessage(chatId, "សូមជ្រើសរើសកម្មករដើម្បីមើលប្រវត្តិច្បាប់៖", {
-        reply_markup: { inline_keyboard: buttons }
+        reply_markup: { 
+            keyboard: MAIN_KEYBOARD_MARKUP.keyboard,
+            resize_keyboard: true,
+            inline_keyboard: buttons 
+        }
     });
 }
-
-bot.onText(/^\/មើលអវត្តមាន$/, msg => {
-    if (!isOwner(msg)) return;
-    sendViewAbsenceMenu(msg.chat.id);
-});
 
 /*
 ========================================
 CALLBACK QUERY
 ========================================
 */
-
 bot.on("callback_query", async (query) => {
     const chatId = query.message.chat.id;
     const data = query.data;
 
     try {
-        // ការពារការលុប
         if (data.startsWith("confirm_del_")) {
             const workerId = Number(data.replace("confirm_del_", ""));
             const workers = readWorkers();
@@ -476,34 +553,26 @@ bot.on("callback_query", async (query) => {
             }
 
             return bot.editMessageText("🗑 កម្មករត្រូវបានលុបចេញពីប្រព័ន្ធដោយជោគជ័យ។", {
-                chat_id: chatId,
-                message_id: query.message.message_id
+                chat_id: chatId, message_id: query.message.message_id
             });
         }
 
         if (data === "cancel_del") {
             return bot.editMessageText("🔄 បានបោះបង់ការលុប។", {
-                chat_id: chatId,
-                message_id: query.message.message_id
+                chat_id: chatId, message_id: query.message.message_id
             });
         }
 
-        // ជ្រើសរើសប្រភេទច្បាប់ (មានបង្ហាញតម្លៃទឹកប្រាក់ដែលត្រូវកាត់ច្បាស់ៗ)
         if (data.startsWith("worker_")) {
             const workerId = Number(data.replace("worker_", ""));
             const worker = getWorkerById(workerId);
-
-            if (!worker) {
-                return bot.answerCallbackQuery(query.id, { text: "រកមិនឃើញកម្មករ" });
-            }
+            if (!worker) return bot.answerCallbackQuery(query.id, { text: "រកមិនឃើញកម្មករ" });
 
             const halfSalary = worker.dailySalary / 2;
-
             return bot.editMessageText(
                 `👤 កម្មករ: ${worker.name} (ប្រាក់ថ្ងៃ: ${worker.dailySalary.toLocaleString()}៛)\n\n👉 សូមជ្រើសរើសប្រភេទអវត្តមាន៖`,
                 {
-                    chat_id: chatId,
-                    message_id: query.message.message_id,
+                    chat_id: chatId, message_id: query.message.message_id,
                     reply_markup: {
                         inline_keyboard: [
                             [{ text: `🌅 ឈប់ព្រឹក (កាត់ -${halfSalary.toLocaleString()}៛)`, callback_data: `abs_morning_${workerId}` }],
@@ -516,7 +585,6 @@ bot.on("callback_query", async (query) => {
             );
         }
 
-        // ដំណើរការរក្សាទុកអវត្តមាន
         if (data.startsWith("abs_present_")) {
             const workerId = Number(data.replace("abs_present_", ""));
             const worker = getWorkerById(workerId);
@@ -560,7 +628,6 @@ bot.on("callback_query", async (query) => {
             });
         }
 
-        // មើលប្រវត្តិ
         if (data.startsWith("history_")) {
             const workerId = Number(data.replace("history_", ""));
             const worker = getWorkerById(workerId);
@@ -593,7 +660,6 @@ bot.on("callback_query", async (query) => {
 SALARY CALCULATOR
 ========================================
 */
-
 function calculateWorkerSalary(worker) {
     const attendance = readAttendance();
     const borrows = readBorrows();
@@ -621,19 +687,13 @@ function calculateWorkerSalary(worker) {
 
 /*
 ========================================
-MANUAL REPORT
+SEND REPORT
 ========================================
 */
-
-bot.onText(/^\/report$/, msg => {
-    if (!isOwner(msg)) return;
-    sendWeeklyReport(msg.chat.id);
-});
-
 function sendWeeklyReport(chatId) {
     const workers = readWorkers();
     const borrows = readBorrows();
-    if (workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
+    if (workers.length === 0) return sendMessageWithKeyboard(chatId, "❌ មិនទាន់មានកម្មករទេ។");
 
     let text = "💰 បញ្ជីបើកប្រាក់ប្រចាំសប្តាហ៍\n\n";
 
@@ -648,7 +708,7 @@ function sendWeeklyReport(chatId) {
         text += `  • ប្រាក់ខែត្រូវបើក៖ ${total.toLocaleString()}៛\n\n`;
     });
 
-    bot.sendMessage(chatId, text);
+    sendMessageWithKeyboard(chatId, text);
 }
 
 /*
@@ -656,25 +716,18 @@ function sendWeeklyReport(chatId) {
 CRON SCHEDULES
 ========================================
 */
-
 cron.schedule("0 17 * * 6", async () => {
     try {
         sendWeeklyReport(OWNER_ID);
-        console.log("Weekly report sent");
-    } catch (err) {
-        console.error(err);
-    }
+    } catch (err) { console.error(err); }
 }, { timezone: "Asia/Phnom_Penh" });
 
 cron.schedule("0 0 * * 0", async () => {
     try {
         saveAttendance({});
         saveBorrows({});
-        bot.sendMessage(OWNER_ID, "🔄 សប្តាហ៍ថ្មីបានចាប់ផ្តើម\nAttendance & Advance Reset Complete");
-        console.log("Attendance & Borrows Reset");
-    } catch (err) {
-        console.error(err);
-    }
+        sendMessageWithKeyboard(OWNER_ID, "🔄 សប្តាហ៍ថ្មីបានចាប់ផ្តើម\nAttendance & Advance Reset Complete");
+    } catch (err) { console.error(err); }
 }, { timezone: "Asia/Phnom_Penh" });
 
 /*
@@ -682,11 +735,7 @@ cron.schedule("0 0 * * 0", async () => {
 ERROR HANDLER
 ========================================
 */
-
-bot.on("polling_error", err => {
-    console.error("Polling Error:", err.message);
-});
-
+bot.on("polling_error", err => console.error("Polling Error:", err.message));
 process.on("uncaughtException", err => console.error(err));
 process.on("unhandledRejection", err => console.error(err));
 
