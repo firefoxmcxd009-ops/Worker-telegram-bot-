@@ -891,71 +891,100 @@ function calculateWorkerSalary(
     worker
 ) {
 
-    const attendance =
-        readAttendance();
-
-    let total = 0;
-
-    const dates =
-        Object.keys(
-            attendance
-        );
-
     /*
-    Monday-Saturday = 6 days
-    Default worker present
-    */
+========================================
+WEEK HELPERS (NEW)
+========================================
+*/
 
-    const weekDays = 6;
-
-    total =
-        worker.dailySalary *
-        weekDays;
-
-    dates.forEach(date => {
-
-        const status =
-            attendance[date]?.[
-                worker.id
-            ];
-
-        if (!status)
-            return;
-
-        if (
-            status === "morning"
-        ) {
-
-            total -=
-                worker.dailySalary /
-                2;
-
-        }
-
-        if (
-            status === "evening"
-        ) {
-
-            total -=
-                worker.dailySalary /
-                2;
-
-        }
-
-        if (
-            status === "full"
-        ) {
-
-            total -=
-                worker.dailySalary;
-
-        }
-
-    });
-
-    return total;
+// Get Monday-Saturday range of current week
+function getWeekDates() {
+    const now = new Date();
+    
+    // Clone date
+    const date = new Date(now);
+    
+    const day = date.getDay();
+    // 0 = Sunday, 1 = Monday ... 6 = Saturday
+    
+    // Convert Sunday → previous week logic
+    const diffToMonday = (day === 0 ? -6 : 1 - day);
+    
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diffToMonday);
+    
+    const weekDates = [];
+    
+    // Monday → Saturday (6 days)
+    for (let i = 0; i < 6; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        
+        weekDates.push(`${year}-${month}-${day}`);
+    }
+    
+    return weekDates;
 }
 
+/*
+========================================
+NEW SALARY ENGINE (FIXED)
+========================================
+*/
+
+function calculateWorkerSalary(worker) {
+    
+    const attendance = readAttendance();
+    
+    const weekDates = getWeekDates();
+    
+    let total = 0;
+    
+    // default: present all 6 days
+    const fullWeekSalary =
+        worker.dailySalary * weekDates.length;
+    
+    total = fullWeekSalary;
+    
+    // subtract absence records ONLY in current week
+    weekDates.forEach(date => {
+        
+        const status =
+            attendance?.[date]?.[worker.id];
+        
+        if (!status) return;
+        
+        // half day (morning or evening)
+        if (status === "morning" || status === "evening") {
+            total -= worker.dailySalary / 2;
+        }
+        
+        // full day absence
+        if (status === "full") {
+            total -= worker.dailySalary;
+        }
+        
+    });
+    
+    // prevent negative salary
+    if (total < 0) total = 0;
+    
+    return total;
+}
+}
+
+function isDateInCurrentWeek(dateStr) {
+    const weekDates = getWeekDates();
+    return weekDates.includes(dateStr);
+}
+// filter only current week attendance
+const dates = Object.keys(attendance)
+    .filter(d => isDateInCurrentWeek(d))
+    .sort();
 /*
 ========================================
 MANUAL REPORT
