@@ -56,18 +56,17 @@ console.log("Bot Started");
 
 /*
 ========================================
-COMMAND MENU (Bot Menu Button)
+១. បន្ថែម MENU BUTTON (នៅខាងឆ្វេង BOX MESSAGE)
 ========================================
 */
-// បន្ថែមបញ្ជី Menu នៅជ្រុងខាងឆ្វេងប្រអប់សរសេរសារ
 bot.setMyCommands([
-    { command: "start", description: "មើលម៉ឺនុយបញ្ជាទាំងអស់" },
-    { command: "listworkers", description: "មើលបញ្ជីឈ្មោះកម្មករទាំងអស់" },
+    { command: "start", description: "បើកម៉ឺនុយមេ / បង្ហាញប៊ូតុងបញ្ជា" },
+    { command: "listworkers", description: "មើលបញ្ជីឈ្មោះ និងប្រាក់ថ្ងៃកម្មករ" },
     { command: "report", description: "មើលរបាយការណ៍ប្រាក់ខែសរុប" },
-    { command: "អវត្តមាន", description: "កត់ត្រាការឈប់សម្រាករបស់កម្មករ" },
-    { command: "មើលអវត្តមាន", description: "មើលប្រវត្តិច្បាប់របស់កម្មករ" }
+    { command: "អវត្តមាន", description: "កត់ត្រាការឈប់សម្រាក" },
+    { command: "មើលអវត្តមាន", description: "មើលប្រវត្តិច្បាប់កម្មករ" }
 ]).then(() => {
-    console.log("Bot Command Menu set successfully");
+    console.log("Telegram Command Menu set successfully");
 });
 
 /*
@@ -225,42 +224,55 @@ function saveAbsence(workerId, type) {
 
 /*
 ========================================
-START (With Value Injection Buttons)
+២. មុខងារបង្ហាញ MAIN KEYBOARD (ប៊ូតុងជាប់ប្រអប់សារ)
+========================================
+*/
+function sendMainKeyboard(chatId, textMessage) {
+    bot.sendMessage(chatId, textMessage, {
+        reply_markup: {
+            keyboard: [
+                [{ text: "📝 កត់អវត្តមាន" }, { text: "📋 មើលអវត្តមាន" }],
+                [{ text: "💰 មើលរបាយការណ៍" }, { text: "👷 បញ្ជីកម្មករ" }],
+                [{ text: "✍️ បន្ថែមកម្មករ (វាយថែម)" }, { text: "💸 បើកលុយមុន (វាយថែម)" }]
+            ],
+            resize_keyboard: true, // ធ្វើឱ្យប៊ូតុងបង្រួមស្អាតសមល្មមនឹងអេក្រង់
+            one_time_keyboard: false
+        }
+    });
+}
+
+/*
+========================================
+START
 ========================================
 */
 
 bot.onText(/^\/start$/, async (msg) => {
-    if (!isOwner(msg)) {
-        return;
+    if (!isOwner(msg)) return;
+
+    const text = `👷 សួស្តីម្ចាស់ហាង! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងកម្មករ។\n\nឥឡូវនេះ លោកអ្នកអាចប្រើប្រាស់ប៊ូតុង Menu នៅខាងឆ្វេងប្រអប់សារ ឬចុចប៊ូតុងបញ្ជាធំៗនៅខាងក្រោមបានយ៉ាងងាយស្រួល។`;
+    sendMainKeyboard(msg.chat.id, text);
+});
+
+// ចាប់យកពាក្យបញ្ជាពីការចុចប៊ូតុង Keyboard ធំៗ
+bot.on("message", (msg) => {
+    if (!isOwner(msg)) return;
+    const text = msg.text;
+
+    if (text === "📝 កត់អវត្តមាន") {
+        sendAbsenceMenu(msg.chat.id);
+    } else if (text === "📋 មើលអវត្តមាន") {
+        sendViewAbsenceMenu(msg.chat.id);
+    } else if (text === "💰 មើលរបាយការណ៍") {
+        sendWeeklyReport(msg.chat.id);
+    } else if (text === "👷 បញ្ជីកម្មករ") {
+        sendWorkersList(msg.chat.id);
+    } else if (text === "✍️ បន្ថែមកម្មករ (វាយថែម)") {
+        // មុខងាររុញពាក្យបញ្ជាចូលប្រអប់សារ ដើម្បីឱ្យម្ចាស់បំពេញ Value ថែម
+        bot.sendMessage(msg.chat.id, "👉 សូមវាយបន្ថែមឈ្មោះ និងប្រាក់ថ្ងៃ តាមទម្រង់ខាងក្រោម៖\n\n`/add ឈ្មោះ ប្រាក់ថ្ងៃ`", { parse_mode: "Markdown" });
+    } else if (text === "💸 បើកលុយមុន (វាយថែម)") {
+        bot.sendMessage(msg.chat.id, "👉 សូមវាយបន្ថែម ID និងចំនួនលុយ តាមទម្រង់ខាងក្រោម៖\n\n`/borrow ID ចំនួនលុយ`", { parse_mode: "Markdown" });
     }
-
-    const text = `👷 Worker Salary Bot
-
-សូមជ្រើសរើសពាក្យបញ្ជាខាងក្រោម៖
-• ចំពោះប៊ូតុងដែលមានសញ្ញា ✍️ វានឹងវាយពាក្យបញ្ជាចូលក្នុងប្រអប់សារស្វ័យប្រវត្តិ អ្នកគ្រាន់តែបំពេញតម្លៃ (Value) បន្ថែមប៉ុណ្ណោះ។`;
-
-    // បង្កើតប៊ូតុងដែលអាចសរសេរ text ចូលទៅក្នុងប្រអប់សរសេរសារ (switch_inline_query_current_chat)
-    bot.sendMessage(msg.chat.id, text, {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "✍️ បន្ថែមកម្មករថ្មី", switch_inline_query_current_chat: "add " },
-                    { text: "👷 បញ្ជីឈ្មោះកម្មករ", callback_data: "menu_listworkers" }
-                ],
-                [
-                    { text: "✍️ កត់ត្រាបើកលុយមុន", switch_inline_query_current_chat: "borrow " },
-                    { text: "✍️ លុបកម្មករ", switch_inline_query_current_chat: "deleteworker " }
-                ],
-                [
-                    { text: "📝 កត់អវត្តមាន", callback_data: "menu_absence" },
-                    { text: "📋 មើលអវត្តមាន", callback_data: "menu_view_absence" }
-                ],
-                [
-                    { text: "💰 មើលរបាយការណ៍ប្រាក់ខែ", callback_data: "menu_report" }
-                ]
-            ]
-        }
-    });
 });
 
 /*
@@ -288,13 +300,13 @@ function handleAddWorker(msg, name, salary) {
 
     bot.sendMessage(
         msg.chat.id,
-        `✅ បានបន្ថែមកម្មករជោគជ័យ\n\nអាយឌី (ID): ${newId}\nឈ្មោះ: ${name}\nប្រាក់ឈ្នួលប្រចាំថ្ងៃ: ${salary.toLocaleString()}៛`
+        `✅ បានបន្ថែមកម្មករជោគជ័យ\n\n🆔 ID: ${newId}\n👤 ឈ្មោះ: ${name}\n💰 ប្រាក់ថ្ងៃ: ${salary.toLocaleString()}៛`
     );
 }
 
 /*
 ========================================
-LIST WORKERS FUNCTION
+LIST WORKERS
 ========================================
 */
 
@@ -304,9 +316,9 @@ function sendWorkersList(chatId) {
         return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករនៅក្នុងប្រព័ន្ធឡើយ។");
     }
 
-    let text = "👷 បញ្ជីឈ្មោះកម្មករទាំងអស់\n\n";
+    let text = " Worker List (បញ្ជីកម្មករ និងប្រាក់ថ្ងៃ)\n\n";
     workers.forEach(worker => {
-        text += `🆔 ID: ${worker.id} | ${worker.name}\n`;
+        text += `🆔 ID: ${worker.id} | 👤 ${worker.name}\n`;
         text += `💰 ប្រាក់ប្រចាំថ្ងៃ: ${worker.dailySalary.toLocaleString()}៛\n\n`;
     });
     bot.sendMessage(chatId, text);
@@ -386,7 +398,7 @@ bot.onText(/^\/បុរេប្រទាន (\d+) (\d+)$/, (msg, match) => {
 
 /*
 ========================================
-ABSENCE FUNCTION
+ABSENCE MENU (ប៊ូតុងបង្ហាញតម្លៃស្រាប់ៗ Value)
 ========================================
 */
 
@@ -396,8 +408,9 @@ function sendAbsenceMenu(chatId) {
         return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
     }
 
+    // កែសម្រួល៖ បង្ហាញទាំងឈ្មោះ និងតម្លៃប្រាក់ប្រចាំថ្ងៃ (Value) នៅលើប៊ូតុងតែម្តង ដើម្បីងាយស្រួលមើល
     const buttons = workers.map(worker => [{
-        text: `${worker.name}`,
+        text: `👤 ${worker.name} (ប្រាក់ថ្ងៃ: ${worker.dailySalary.toLocaleString()}៛)`,
         callback_data: `worker_${worker.id}`
     }]);
 
@@ -413,7 +426,7 @@ bot.onText(/^\/អវត្តមាន$/, msg => {
 
 /*
 ========================================
-VIEW ABSENCE FUNCTION
+VIEW ABSENCE MENU
 ========================================
 */
 
@@ -424,11 +437,11 @@ function sendViewAbsenceMenu(chatId) {
     }
 
     const buttons = workers.map(worker => [{
-        text: worker.name,
+        text: `📋 មើលប្រវត្តិ៖ ${worker.name}`,
         callback_data: `history_${worker.id}`
     }]);
 
-    bot.sendMessage(chatId, "📋 សូមជ្រើសរើសកម្មករដើម្បីមើលប្រវត្តិច្បាប់៖", {
+    bot.sendMessage(chatId, "សូមជ្រើសរើសកម្មករដើម្បីមើលប្រវត្តិច្បាប់៖", {
         reply_markup: { inline_keyboard: buttons }
     });
 }
@@ -449,20 +462,6 @@ bot.on("callback_query", async (query) => {
     const data = query.data;
 
     try {
-        // ម៉ឺនុយប៊ូតុងមកពី /start
-        if (data === "menu_listworkers") {
-            return sendWorkersList(chatId);
-        }
-        if (data === "menu_absence") {
-            return sendAbsenceMenu(chatId);
-        }
-        if (data === "menu_view_absence") {
-            return sendViewAbsenceMenu(chatId);
-        }
-        if (data === "menu_report") {
-            return sendWeeklyReport(chatId);
-        }
-
         // ការពារការលុប
         if (data.startsWith("confirm_del_")) {
             const workerId = Number(data.replace("confirm_del_", ""));
@@ -489,7 +488,7 @@ bot.on("callback_query", async (query) => {
             });
         }
 
-        // ជ្រើសរើសប្រភេទច្បាប់
+        // ជ្រើសរើសប្រភេទច្បាប់ (មានបង្ហាញតម្លៃទឹកប្រាក់ដែលត្រូវកាត់ច្បាស់ៗ)
         if (data.startsWith("worker_")) {
             const workerId = Number(data.replace("worker_", ""));
             const worker = getWorkerById(workerId);
@@ -498,16 +497,18 @@ bot.on("callback_query", async (query) => {
                 return bot.answerCallbackQuery(query.id, { text: "រកមិនឃើញកម្មករ" });
             }
 
+            const halfSalary = worker.dailySalary / 2;
+
             return bot.editMessageText(
-                ` Worker: ${worker.name}\n\n👉 សូមជ្រើសរើសប្រភេទអវត្តមាន៖`,
+                `👤 កម្មករ: ${worker.name} (ប្រាក់ថ្ងៃ: ${worker.dailySalary.toLocaleString()}៛)\n\n👉 សូមជ្រើសរើសប្រភេទអវត្តមាន៖`,
                 {
                     chat_id: chatId,
                     message_id: query.message.message_id,
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: "🌅 ឈប់ព្រឹក (កាត់កន្លះថ្ងៃ)", callback_data: `abs_morning_${workerId}` }],
-                            [{ text: "🌙 ឈប់ល្ងាច (កាត់កន្លះថ្ងៃ)", callback_data: `abs_evening_${workerId}` }],
-                            [{ text: "❌ ឈប់មួយថ្ងៃពេញ (កាត់ពេញថ្ងៃ)", callback_data: `abs_full_${workerId}` }],
+                            [{ text: `🌅 ឈប់ព្រឹក (កាត់ -${halfSalary.toLocaleString()}៛)`, callback_data: `abs_morning_${workerId}` }],
+                            [{ text: `🌙 ឈប់ល្ងាច (កាត់ -${halfSalary.toLocaleString()}៛)`, callback_data: `abs_evening_${workerId}` }],
+                            [{ text: `❌ ឈប់មួយថ្ងៃពេញ (កាត់ -${worker.dailySalary.toLocaleString()}៛)`, callback_data: `abs_full_${workerId}` }],
                             [{ text: "✅ មកធ្វើការវិញ (លុបច្បាប់ថ្ងៃនេះ)", callback_data: `abs_present_${workerId}` }]
                         ]
                     }
@@ -656,7 +657,6 @@ CRON SCHEDULES
 ========================================
 */
 
-// ផ្ញើរបាយការណ៍ស្វ័យប្រវត្ត រៀងរាល់ថ្ងៃសៅរ៍ ម៉ោង ៥ ល្ងាច
 cron.schedule("0 17 * * 6", async () => {
     try {
         sendWeeklyReport(OWNER_ID);
@@ -666,7 +666,6 @@ cron.schedule("0 17 * * 6", async () => {
     }
 }, { timezone: "Asia/Phnom_Penh" });
 
-// សម្អាតទិន្នន័យចាស់ រៀងរាល់ថ្ងៃអាទិត្យ ម៉ោង ១២ យប់
 cron.schedule("0 0 * * 0", async () => {
     try {
         saveAttendance({});
