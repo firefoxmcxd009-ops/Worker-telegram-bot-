@@ -6,32 +6,19 @@ const express = require("express");
 const cron = require("node-cron");
 const TelegramBot = require("node-telegram-bot-api");
 
-/*
-========================================
+/* =========================================================
 CONFIG
-========================================
-*/
-
+========================================================= */
 const TOKEN = process.env.BOT_TOKEN;
 const OWNER_ID = Number(process.env.OWNER_ID);
 const PORT = process.env.PORT || 3000;
 
-if (!TOKEN) {
-    console.error("BOT_TOKEN missing");
-    process.exit(1);
-}
+if (!TOKEN) throw new Error("BOT_TOKEN missing");
+if (!OWNER_ID) throw new Error("OWNER_ID missing");
 
-if (!OWNER_ID) {
-    console.error("OWNER_ID missing");
-    process.exit(1);
-}
-
-/*
-========================================
-EXPRESS
-========================================
-*/
-
+/* =========================================================
+EXPRESS SERVER
+========================================================= */
 const app = express();
 
 app.get("/", (req, res) => {
@@ -39,1140 +26,362 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on ${PORT}`);
+    console.log("Server running:", PORT);
 });
 
-/*
-========================================
-BOT
-========================================
-*/
+/* =========================================================
+BOT INIT
+========================================================= */
+const bot = new TelegramBot(TOKEN, { polling: true });
 
-const bot = new TelegramBot(TOKEN, {
-    polling: true
-});
+console.log("Bot started");
 
-console.log("Bot Started");
-
-/*
-========================================
+/* =========================================================
 FILES
-========================================
-*/
-
+========================================================= */
 const WORKERS_FILE = path.join(__dirname, "workers.json");
-const ATTENDANCE_FILE = path.join(__dirname, "attendance.json");
+const ATT_FILE = path.join(__dirname, "attendance.json");
 
-/*
-========================================
+/* =========================================================
 INIT FILES
-========================================
-*/
-
+========================================================= */
 if (!fs.existsSync(WORKERS_FILE)) {
-    fs.writeFileSync(
-        WORKERS_FILE,
-        JSON.stringify([], null, 2)
-    );
+    fs.writeFileSync(WORKERS_FILE, "[]");
 }
 
-if (!fs.existsSync(ATTENDANCE_FILE)) {
-    fs.writeFileSync(
-        ATTENDANCE_FILE,
-        JSON.stringify({}, null, 2)
-    );
+if (!fs.existsSync(ATT_FILE)) {
+    fs.writeFileSync(ATT_FILE, "{}");
 }
 
-/*
-========================================
+/* =========================================================
 HELPERS
-========================================
-*/
-
-function readWorkers() {
+========================================================= */
+function read(file) {
     try {
-        return JSON.parse(
-            fs.readFileSync(WORKERS_FILE, "utf8")
-        );
-    } catch {
-        return [];
-    }
-}
-
-function saveWorkers(data) {
-    fs.writeFileSync(
-        WORKERS_FILE,
-        JSON.stringify(data, null, 2)
-    );
-}
-
-function readAttendance() {
-    try {
-        return JSON.parse(
-            fs.readFileSync(ATTENDANCE_FILE, "utf8")
-        );
+        return JSON.parse(fs.readFileSync(file, "utf8"));
     } catch {
         return {};
     }
 }
 
-function saveAttendance(data) {
-    fs.writeFileSync(
-        ATTENDANCE_FILE,
-        JSON.stringify(data, null, 2)
-    );
+function save(file, data) {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
 function isOwner(msg) {
     return msg.from.id === OWNER_ID;
 }
 
-function getTodayDate() {
-    const now = new Date();
-
-    const year = now.getFullYear();
-
-    const month = String(
-        now.getMonth() + 1
-    ).padStart(2, "0");
-
-    const day = String(
-        now.getDate()
-    ).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
+/* =========================================================
+DATE SYSTEM
+========================================================= */
+function today() {
+    return new Date().toISOString().split("T")[0];
 }
 
-function getWorkerById(workerId) {
-    const workers = readWorkers();
-
-    return workers.find(
-        w => Number(w.id) === Number(workerId)
-    );
-}
-
-/*
-========================================
-DAY NAME
-========================================
-*/
-
-function getKhmerDayName(dateStr) {
-
-    const date = new Date(dateStr);
-
-    const day = date.getDay();
-
-    const map = {
-        0: "អាទិត្យ",
-        1: "ចន្ទ",
-        2: "អង្គារ",
-        3: "ពុធ",
-        4: "ព្រហស្បតិ៍",
-        5: "សុក្រ",
-        6: "សៅរ៍"
-    };
-
-    return map[day];
-}
-
-/*
-========================================
-ADD ABSENCE
-========================================
-*/
-
-function saveAbsence(
-    workerId,
-    type
-) {
-
-    const attendance =
-        readAttendance();
-
-    const today =
-        getTodayDate();
-
-    if (!attendance[today]) {
-        attendance[today] = {};
-    }
-
-    attendance[today][workerId] =
-        type;
-
-    saveAttendance(
-        attendance
-    );
-}
-
-/*
-========================================
-START
-========================================
-*/
-
-bot.onText(
-    /^\/start$/,
-    async (msg) => {
-
-        if (!isOwner(msg)) {
-            return;
-        }
-
-        const text = `
-👷 Worker Salary Bot
-
-Commands:
-
-/addworker ឈ្មោះ 20000
-/add ឈ្មោះ 20000
-
-/listworkers
-
-/deleteworker ID
-
-/អវត្តមាន
-
-/មើលអវត្តមាន
-
-/report
-`;
-
-        bot.sendMessage(
-            msg.chat.id,
-            text
-        );
-    }
-);
-
-/*
-========================================
-ADD WORKER
-========================================
-*/
-
-bot.onText(
-    /^\/addworker (.+) (\d+)$/,
-    (msg, match) => {
-
-        if (!isOwner(msg)) {
-            return;
-        }
-
-        const name =
-            match[1].trim();
-
-        const salary =
-            Number(match[2]);
-
-        const workers =
-            readWorkers();
-
-        const newId =
-            workers.length > 0
-                ? Math.max(
-                    ...workers.map(
-                        w => w.id
-                    )
-                ) + 1
-                : 1;
-
-        workers.push({
-            id: newId,
-            name,
-            dailySalary: salary
-        });
-
-        saveWorkers(
-            workers
-        );
-
-        bot.sendMessage(
-            msg.chat.id,
-            `✅ Added\n\nID: ${newId}\nName: ${name}\nSalary: ${salary.toLocaleString()}៛`
-        );
-    }
-);
-
-/*
-========================================
-SHORT ADD
-========================================
-*/
-
-bot.onText(
-    /^\/add (.+) (\d+)$/,
-    (msg, match) => {
-
-        if (!isOwner(msg)) {
-            return;
-        }
-
-        const name =
-            match[1].trim();
-
-        const salary =
-            Number(match[2]);
-
-        const workers =
-            readWorkers();
-
-        const newId =
-            workers.length > 0
-                ? Math.max(
-                    ...workers.map(
-                        w => w.id
-                    )
-                ) + 1
-                : 1;
-
-        workers.push({
-            id: newId,
-            name,
-            dailySalary: salary
-        });
-
-        saveWorkers(
-            workers
-        );
-
-        bot.sendMessage(
-            msg.chat.id,
-            `✅ Added\n\nID: ${newId}\nName: ${name}\nSalary: ${salary.toLocaleString()}៛`
-        );
-    }
-);
-
-/*
-========================================
-LIST WORKERS
-========================================
-*/
-
-bot.onText(
-    /^\/listworkers$/,
-    msg => {
-
-        if (!isOwner(msg)) {
-            return;
-        }
-
-        const workers =
-            readWorkers();
-
-        if (
-            workers.length === 0
-        ) {
-            return bot.sendMessage(
-                msg.chat.id,
-                "No workers found."
-            );
-        }
-
-        let text =
-            "👷 Workers List\n\n";
-
-        workers.forEach(
-            worker => {
-
-                text +=
-                    `${worker.id}. ${worker.name}\n`;
-
-                text +=
-                    `Salary: ${worker.dailySalary.toLocaleString()}៛\n\n`;
-            }
-        );
-
-        bot.sendMessage(
-            msg.chat.id,
-            text
-        );
-    }
-);
-
-/*
-========================================
-DELETE WORKER
-========================================
-*/
-
-bot.onText(
-    /^\/deleteworker (\d+)$/,
-    (msg, match) => {
-
-        if (!isOwner(msg)) {
-            return;
-        }
-
-        const workerId =
-            Number(match[1]);
-
-        const workers =
-            readWorkers();
-
-        const filtered =
-            workers.filter(
-                w =>
-                    w.id !== workerId
-            );
-
-        saveWorkers(
-            filtered
-        );
-
-        bot.sendMessage(
-            msg.chat.id,
-            "🗑 Worker deleted"
-        );
-    }
-);
-
-/*
-========================================
-ABSENCE MENU
-========================================
-*/
-
-bot.onText(
-    /^\/អវត្តមាន$/,
-    msg => {
-
-        if (!isOwner(msg)) {
-            return;
-        }
-
-        const workers =
-            readWorkers();
-
-        if (
-            workers.length === 0
-        ) {
-            return bot.sendMessage(
-                msg.chat.id,
-                "No workers."
-            );
-        }
-
-        const buttons =
-            workers.map(
-                worker => [{
-                    text:
-                        `${worker.name}`,
-                    callback_data:
-                        `worker_${worker.id}`
-                }]
-            );
-
-        bot.sendMessage(
-            msg.chat.id,
-            "ជ្រើសកម្មករ",
-            {
-                reply_markup: {
-                    inline_keyboard:
-                        buttons
-                }
-            }
-        );
-    }
-);
-
-/*
-========================================
-PART 2 CONTINUES...
-========================================
-*/
-/*
-========================================
-CALLBACK QUERY
-========================================
-*/
-
-bot.on("callback_query", async (query) => {
-
-    const chatId = query.message.chat.id;
-    const data = query.data;
-
-    try {
-
-        /*
-        ================================
-        SELECT WORKER
-        ================================
-        */
-
-        if (data.startsWith("worker_")) {
-
-            const workerId =
-                Number(
-                    data.replace(
-                        "worker_",
-                        ""
-                    )
-                );
-
-            const worker =
-                getWorkerById(
-                    workerId
-                );
-
-            if (!worker) {
-                return bot.answerCallbackQuery(
-                    query.id,
-                    {
-                        text:
-                            "Worker not found"
-                    }
-                );
-            }
-
-            return bot.editMessageText(
-                `👷 ${worker.name}
-
-ជ្រើសប្រភេទអវត្តមាន`,
-                {
-                    chat_id: chatId,
-                    message_id:
-                        query.message
-                            .message_id,
-
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text:
-                                        "🌅 ឈប់ព្រឹក",
-                                    callback_data:
-                                        `abs_morning_${workerId}`
-                                }
-                            ],
-                            [
-                                {
-                                    text:
-                                        "🌙 ឈប់ល្ងាច",
-                                    callback_data:
-                                        `abs_evening_${workerId}`
-                                }
-                            ],
-                            [
-                                {
-                                    text:
-                                        "❌ ឈប់មួយថ្ងៃ",
-                                    callback_data:
-                                        `abs_full_${workerId}`
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-        }
-
-        /*
-        ================================
-        MORNING ABSENT
-        ================================
-        */
-
-        if (
-            data.startsWith(
-                "abs_morning_"
-            )
-        ) {
-
-            const workerId =
-                Number(
-                    data.replace(
-                        "abs_morning_",
-                        ""
-                    )
-                );
-
-            const worker =
-                getWorkerById(
-                    workerId
-                );
-
-            saveAbsence(
-                workerId,
-                "morning"
-            );
-
-            await bot.editMessageText(
-                `✅ ${worker.name}
-
-កត់ត្រា:
-ឈប់ព្រឹក
-
-ប្រាក់ថ្ងៃនេះ:
-${(
-                    worker.dailySalary /
-                    2
-                ).toLocaleString()}៛`,
-                {
-                    chat_id: chatId,
-                    message_id:
-                        query.message
-                            .message_id
-                }
-            );
-
-            return;
-        }
-
-        /*
-        ================================
-        EVENING ABSENT
-        ================================
-        */
-
-        if (
-            data.startsWith(
-                "abs_evening_"
-            )
-        ) {
-
-            const workerId =
-                Number(
-                    data.replace(
-                        "abs_evening_",
-                        ""
-                    )
-                );
-
-            const worker =
-                getWorkerById(
-                    workerId
-                );
-
-            saveAbsence(
-                workerId,
-                "evening"
-            );
-
-            await bot.editMessageText(
-                `✅ ${worker.name}
-
-កត់ត្រា:
-ឈប់ល្ងាច
-
-ប្រាក់ថ្ងៃនេះ:
-${(
-                    worker.dailySalary /
-                    2
-                ).toLocaleString()}៛`,
-                {
-                    chat_id: chatId,
-                    message_id:
-                        query.message
-                            .message_id
-                }
-            );
-
-            return;
-        }
-
-        /*
-        ================================
-        FULL DAY ABSENT
-        ================================
-        */
-
-        if (
-            data.startsWith(
-                "abs_full_"
-            )
-        ) {
-
-            const workerId =
-                Number(
-                    data.replace(
-                        "abs_full_",
-                        ""
-                    )
-                );
-
-            const worker =
-                getWorkerById(
-                    workerId
-                );
-
-            saveAbsence(
-                workerId,
-                "full"
-            );
-
-            await bot.editMessageText(
-                `✅ ${worker.name}
-
-កត់ត្រា:
-ឈប់មួយថ្ងៃពេញ
-
-ប្រាក់ថ្ងៃនេះ:
-0៛`,
-                {
-                    chat_id: chatId,
-                    message_id:
-                        query.message
-                            .message_id
-                }
-            );
-
-            return;
-        }
-
-        /*
-        ================================
-        VIEW WORKER HISTORY
-        ================================
-        */
-
-        if (
-            data.startsWith(
-                "history_"
-            )
-        ) {
-
-            const workerId =
-                Number(
-                    data.replace(
-                        "history_",
-                        ""
-                    )
-                );
-
-            const worker =
-                getWorkerById(
-                    workerId
-                );
-
-            const attendance =
-                readAttendance();
-
-            let text =
-                `📋 ${worker.name}\n\n`;
-
-            const dates =
-                Object.keys(
-                    attendance
-                ).sort();
-
-            if (
-                dates.length === 0
-            ) {
-
-                text +=
-                    "មិនមានទិន្នន័យ";
-
-            } else {
-
-                dates.forEach(
-                    date => {
-
-                        const day =
-                            getKhmerDayName(
-                                date
-                            );
-
-                        const status =
-                            attendance[
-                                date
-                            ]?.[
-                                workerId
-                            ];
-
-                        let result =
-                            "មកពេញថ្ងៃ";
-
-                        if (
-                            status ===
-                            "morning"
-                        ) {
-                            result =
-                                "ឈប់ព្រឹក";
-                        }
-
-                        if (
-                            status ===
-                            "evening"
-                        ) {
-                            result =
-                                "ឈប់ល្ងាច";
-                        }
-
-                        if (
-                            status ===
-                            "full"
-                        ) {
-                            result =
-                                "ឈប់មួយថ្ងៃ";
-                        }
-
-                        text +=
-                            `${day} (${date}) : ${result}\n`;
-                    }
-                );
-            }
-
-            return bot.editMessageText(
-                text,
-                {
-                    chat_id: chatId,
-                    message_id:
-                        query.message
-                            .message_id
-                }
-            );
-        }
-
-    } catch (err) {
-
-        console.error(err);
-
-    }
-});
-
-/*
-========================================
-VIEW ABSENCE
-========================================
-*/
-
-bot.onText(
-    /^\/មើលអវត្តមាន$/,
-    msg => {
-
-        if (!isOwner(msg))
-            return;
-
-        const workers =
-            readWorkers();
-
-        if (
-            workers.length === 0
-        ) {
-            return bot.sendMessage(
-                msg.chat.id,
-                "No workers."
-            );
-        }
-
-        const buttons =
-            workers.map(
-                worker => [
-                    {
-                        text:
-                            worker.name,
-                        callback_data:
-                            `history_${worker.id}`
-                    }
-                ]
-            );
-
-        bot.sendMessage(
-            msg.chat.id,
-            "📋 ជ្រើសកម្មករ",
-            {
-                reply_markup: {
-                    inline_keyboard:
-                        buttons
-                }
-            }
-        );
-    }
-);
-
-/*
-========================================
-SALARY CALCULATOR
-========================================
-*/
-
-function calculateWorkerSalary(
-    worker
-) {
-
-    /*
-========================================
-WEEK HELPERS (NEW)
-========================================
-*/
-
-// Get Monday-Saturday range of current week
+/* =========================================================
+WEEK SYSTEM (MON - SAT)
+========================================================= */
 function getWeekDates() {
     const now = new Date();
-    
-    // Clone date
-    const date = new Date(now);
-    
-    const day = date.getDay();
-    // 0 = Sunday, 1 = Monday ... 6 = Saturday
-    
-    // Convert Sunday → previous week logic
-    const diffToMonday = (day === 0 ? -6 : 1 - day);
-    
-    const monday = new Date(date);
-    monday.setDate(date.getDate() + diffToMonday);
-    
-    const weekDates = [];
-    
-    // Monday → Saturday (6 days)
+    const day = now.getDay();
+
+    const diff = day === 0 ? -6 : 1 - day;
+
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + diff);
+
+    let arr = [];
+
     for (let i = 0; i < 6; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
-        
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        
-        weekDates.push(`${year}-${month}-${day}`);
+        let d = new Date(mon);
+        d.setDate(mon.getDate() + i);
+
+        arr.push(d.toISOString().split("T")[0]);
     }
-    
-    return weekDates;
+
+    return arr;
 }
 
-/*
-========================================
-NEW SALARY ENGINE (FIXED)
-========================================
-*/
+/* =========================================================
+DATA LAYER
+========================================================= */
+function getWorkers() {
+    return read(WORKERS_FILE);
+}
 
-function calculateWorkerSalary(worker) {
-    
-    const attendance = readAttendance();
-    
-    const weekDates = getWeekDates();
-    
-    let total = 0;
-    
-    // default: present all 6 days
-    const fullWeekSalary =
-        worker.dailySalary * weekDates.length;
-    
-    total = fullWeekSalary;
-    
-    // subtract absence records ONLY in current week
-    weekDates.forEach(date => {
-        
-        const status =
-            attendance?.[date]?.[worker.id];
-        
+function getAttendance() {
+    return read(ATT_FILE);
+}
+
+/* =========================================================
+WORKER MANAGEMENT
+========================================================= */
+function addWorker(name, salary) {
+    let w = getWorkers();
+
+    let id = w.length ? w[w.length - 1].id + 1 : 1;
+
+    w.push({
+        id,
+        name,
+        dailySalary: salary
+    });
+
+    save(WORKERS_FILE, w);
+
+    return id;
+}
+
+function deleteWorker(id) {
+    let w = getWorkers().filter(x => x.id !== id);
+    save(WORKERS_FILE, w);
+}
+
+/* =========================================================
+ATTENDANCE SYSTEM
+========================================================= */
+function setAttendance(date, workerId, type) {
+    let att = getAttendance();
+
+    if (!att[date]) att[date] = {};
+
+    att[date][workerId] = type;
+
+    save(ATT_FILE, att);
+}
+
+/* =========================================================
+SALARY ENGINE (FIXED CORE)
+========================================================= */
+function calculateSalary(worker) {
+
+    const att = getAttendance();
+    const week = getWeekDates();
+
+    let total = worker.dailySalary * week.length;
+
+    week.forEach(date => {
+
+        const status = att?.[date]?.[worker.id];
+
         if (!status) return;
-        
-        // half day (morning or evening)
+
         if (status === "morning" || status === "evening") {
             total -= worker.dailySalary / 2;
         }
-        
-        // full day absence
+
         if (status === "full") {
             total -= worker.dailySalary;
         }
-        
     });
-    
-    // prevent negative salary
-    if (total < 0) total = 0;
-    
-    return total;
-}
+
+    return Math.max(0, total);
 }
 
-function isDateInCurrentWeek(dateStr) {
-    const weekDates = getWeekDates();
-    return weekDates.includes(dateStr);
+/* =========================================================
+REPORT SYSTEM
+========================================================= */
+function generateReport() {
+
+    let w = getWorkers();
+
+    let text = "💰 Weekly Payroll Report\n\n";
+
+    w.forEach((x, i) => {
+
+        text += `${i + 1}. ${x.name}\n`;
+        text += `Salary: ${calculateSalary(x).toLocaleString()}៛\n\n`;
+    });
+
+    return text;
 }
-// filter only current week attendance
-const dates = Object.keys(attendance)
-    .filter(d => isDateInCurrentWeek(d))
-    .sort();
-/*
-========================================
-MANUAL REPORT
-========================================
-*/
 
-bot.onText(
-    /^\/report$/,
-    msg => {
+/* =========================================================
+START COMMAND
+========================================================= */
+bot.onText(/\/start/, (msg) => {
 
-        if (!isOwner(msg))
-            return;
+    if (!isOwner(msg)) return;
 
-        sendWeeklyReport(
-            msg.chat.id
-        );
-    }
-);
+    bot.sendMessage(msg.chat.id,
+`👷 Worker Bot System
 
-/*
-========================================
-SEND REPORT
-========================================
-*/
-
-function sendWeeklyReport(
-    chatId
-) {
-
-    const workers =
-        readWorkers();
-
-    if (
-        workers.length === 0
-    ) return;
-
-    let text =
-        "💰 បញ្ជីបើកប្រាក់ប្រចាំសប្តាហ៍\n\n";
-
-    workers.forEach(
-        (
-            worker,
-            index
-        ) => {
-
-            const total =
-                calculateWorkerSalary(
-                    worker
-                );
-
-            text +=
-                `${index + 1}. ${worker.name}\n`;
-
-            text +=
-                `ប្រាក់សរុប: ${total.toLocaleString()}៛\n\n`;
-        }
+/addworker name salary
+/add name salary
+/listworkers
+/deleteworker id
+/អវត្តមាន
+/មើលអវត្តមាន
+/report`
     );
+});
 
-    bot.sendMessage(
-        chatId,
-        text
-    );
-}
+/* =========================================================
+ADD WORKER
+========================================================= */
+bot.onText(/\/addworker (.+) (\d+)/, (msg, m) => {
 
-/*
-========================================
-AUTO REPORT
-SATURDAY 5 PM
-CAMBODIA
-========================================
-*/
+    if (!isOwner(msg)) return;
 
-cron.schedule(
-    "0 17 * * 6",
-    async () => {
+    let id = addWorker(m[1], Number(m[2]));
 
-        try {
+    bot.sendMessage(msg.chat.id, `Added Worker ID: ${id}`);
+});
 
-            sendWeeklyReport(
-                OWNER_ID
-            );
+/* alias add */
+bot.onText(/\/add (.+) (\d+)/, (msg, m) => {
 
-            console.log(
-                "Weekly report sent"
-            );
+    if (!isOwner(msg)) return;
 
-        } catch (err) {
+    let id = addWorker(m[1], Number(m[2]));
 
-            console.error(
-                err
-            );
+    bot.sendMessage(msg.chat.id, `Added Worker ID: ${id}`);
+});
 
+/* =========================================================
+LIST WORKERS
+========================================================= */
+bot.onText(/\/listworkers/, (msg) => {
+
+    if (!isOwner(msg)) return;
+
+    let w = getWorkers();
+
+    let text = "👷 Workers List\n\n";
+
+    w.forEach(x => {
+        text += `${x.id}. ${x.name} - ${x.dailySalary}៛\n`;
+    });
+
+    bot.sendMessage(msg.chat.id, text);
+});
+
+/* =========================================================
+DELETE WORKER
+========================================================= */
+bot.onText(/\/deleteworker (\d+)/, (msg, m) => {
+
+    if (!isOwner(msg)) return;
+
+    deleteWorker(Number(m[1]));
+
+    bot.sendMessage(msg.chat.id, "Deleted ✔");
+});
+
+/* =========================================================
+ABSENCE MENU
+========================================================= */
+bot.onText(/\/អវត្តមាន/, (msg) => {
+
+    if (!isOwner(msg)) return;
+
+    let w = getWorkers();
+
+    let kb = w.map(x => ([{
+        text: x.name,
+        callback_data: "w_" + x.id
+    }]));
+
+    bot.sendMessage(msg.chat.id, "Select Worker", {
+        reply_markup: {
+            inline_keyboard: kb
         }
+    });
+});
 
-    },
-    {
-        timezone:
-            "Asia/Phnom_Penh"
+/* =========================================================
+CALLBACK SYSTEM
+========================================================= */
+bot.on("callback_query", (q) => {
+
+    const data = q.data;
+    const chatId = q.message.chat.id;
+
+    let workers = getWorkers();
+    let att = getAttendance();
+
+    /* worker select */
+    if (data.startsWith("w_")) {
+
+        let id = Number(data.split("_")[1]);
+        let w = workers.find(x => x.id === id);
+
+        return bot.editMessageText(`👷 ${w.name}`, {
+            chat_id: chatId,
+            message_id: q.message.message_id,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "🌅 Morning", callback_data: `m_${id}` }],
+                    [{ text: "🌙 Evening", callback_data: `e_${id}` }],
+                    [{ text: "❌ Full Day", callback_data: `f_${id}` }]
+                ]
+            }
+        });
     }
-);
 
-/*
-========================================
-RESET WEEK
-SUNDAY 00:00
-========================================
-*/
+    let date = today();
 
-cron.schedule(
-    "0 0 * * 0",
-    async () => {
+    if (!att[date]) att[date] = {};
 
-        try {
-
-            saveAttendance(
-                {}
-            );
-
-            bot.sendMessage(
-                OWNER_ID,
-                "🔄 សប្តាហ៍ថ្មីបានចាប់ផ្តើម\nAttendance Reset Complete"
-            );
-
-            console.log(
-                "Attendance Reset"
-            );
-
-        } catch (err) {
-
-            console.error(
-                err
-            );
-
-        }
-
-    },
-    {
-        timezone:
-            "Asia/Phnom_Penh"
+    if (data.startsWith("m_")) {
+        let id = data.split("_")[1];
+        att[date][id] = "morning";
     }
-);
 
-/*
-========================================
-ERROR HANDLER
-========================================
-*/
-
-bot.on(
-    "polling_error",
-    err => {
-
-        console.error(
-            "Polling Error:",
-            err.message
-        );
-
+    if (data.startsWith("e_")) {
+        let id = data.split("_")[1];
+        att[date][id] = "evening";
     }
-);
 
-/*
-========================================
-UNCAUGHT
-========================================
-*/
-
-process.on(
-    "uncaughtException",
-    err => {
-
-        console.error(
-            err
-        );
-
+    if (data.startsWith("f_")) {
+        let id = data.split("_")[1];
+        att[date][id] = "full";
     }
-);
 
-process.on(
-    "unhandledRejection",
-    err => {
+    save(ATT_FILE, att);
 
-        console.error(
-            err
-        );
+    bot.answerCallbackQuery(q.id, { text: "Saved ✔" });
+});
 
-    }
-);
+/* =========================================================
+REPORT COMMAND
+========================================================= */
+bot.onText(/\/report/, (msg) => {
 
-console.log(
-    "Worker Salary System Ready ✅"
-);
+    if (!isOwner(msg)) return;
+
+    bot.sendMessage(msg.chat.id, generateReport());
+});
+
+/* =========================================================
+AUTO REPORT (SAT 5PM)
+========================================================= */
+cron.schedule("0 17 * * 6", () => {
+
+    bot.sendMessage(OWNER_ID, generateReport());
+
+}, {
+    timezone: "Asia/Phnom_Penh"
+});
+
+/* =========================================================
+RESET (SUN 00:00)
+========================================================= */
+cron.schedule("0 0 * * 0", () => {
+
+    save(ATT_FILE, {});
+
+    bot.sendMessage(OWNER_ID, "🔄 New Week Started");
+
+}, {
+    timezone: "Asia/Phnom_Penh"
+});
+
+/* =========================================================
+ERROR HANDLING
+========================================================= */
+process.on("uncaughtException", console.error);
+process.on("unhandledRejection", console.error);
+
+console.log("READY ✔");
