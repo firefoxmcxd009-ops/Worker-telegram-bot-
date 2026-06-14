@@ -13,6 +13,7 @@ CONFIG & MONGO URL CONNECTION
 const TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
 
+// តំណភ្ជាប់ទៅកាន់ MongoDB Cloud របស់បងផ្ទាល់
 const MONGO_URL = "mongodb+srv://allinonebot:allinonebot123@amertakcluster.m5zjxka.mongodb.net/worker_db?retryWrites=true&w=majority&appName=AmertakCluster";
 
 if (!TOKEN) {
@@ -41,7 +42,7 @@ mongoose.connect(MONGO_URL)
         process.exit(1);
     });
 
-// Database Schema
+// ទម្រង់ទិន្នន័យ (Database Schemas)
 const AccountSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true }, 
     projectName: { type: String, required: true },
@@ -105,7 +106,7 @@ function getWeekDates() {
     const currentDay = now.getDay();
     const monday = new Date(now);
     const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-    monday.setDate(now.getDate() + distanceToMonday);
+    monday.setDate(now.getDate() + distanceToDistance);
     
     for (let i = 0; i < 6; i++) {
         const nextDay = new Date(monday);
@@ -160,7 +161,7 @@ function sendAuthRequired(chatId, telegramId) {
 async function handleLogout(chatId) {
     await Session.deleteOne({ chatId: String(chatId) });
     delete userSessions[chatId];
-    bot.sendMessage(chatId, "🚪 បានចាកចេញពីប្រូជេកដោយជោគជ័យ。");
+    bot.sendMessage(chatId, "🚪 បានចាកចេញពីប្រូជេកដោយជោគជ័យ។");
 }
 
 /*
@@ -203,7 +204,7 @@ bot.onText(/^\/logout$/, async (msg) => {
     sendAuthRequired(msg.chat.id, msg.from.id);
 });
 
-// ប្រព័ន្ធគ្រប់គ្រងការវាយ Text Commands បន្ថែម (Fix មុខងារ /listworkers, /addworker, /report មិនដើរ)
+// បាន Fix មុខងារ /listworkers, /addworker, /report ឱ្យដំណើរការលឿនរហ័ស
 bot.onText(/^\/listworkers$/, async (msg) => {
     delete userSessions[msg.chat.id];
     const session = await Session.findOne({ chatId: String(msg.chat.id) });
@@ -270,7 +271,7 @@ bot.on("callback_query", async (query) => {
 
         if (data === "auth_register") {
             userSessions[chatId] = { state: "REGISTRATION_PROJECT_NAME" };
-            return bot.sendMessage(chatId, `✍️ **ជំហានទី១៖** សូមវាយបញ្ចូល **ឈ្មោះប្រូជេក (Project Name)** របស់អ្នក៖\n\n*ឧទាហរណ៍៖ การถมดินA*`);
+            return bot.sendMessage(chatId, `✍️ **ជំហានទី១៖** សូមវាយបញ្ចូល **ឈ្មោះប្រូជេក (Project Name)** របស់អ្នក៖\n\n*ឧទាហរណ៍៖ ការដ្ឋានអាគារA*`);
         }
 
         if (data === "auth_login") {
@@ -278,7 +279,7 @@ bot.on("callback_query", async (query) => {
             return bot.sendMessage(chatId, `✍️ **សូមវាយបញ្ចូល Telegram ID និងពាក្យសម្ងាត់ប្រូជេក៖**\n\n*ទម្រង់វាយ៖* \`TelegramID ពាក្យសម្ងាត់\`\n*ឧទាហរណ៍៖* \`${telegramId} boss1234\``, { parse_mode: "Markdown" });
         }
 
-        // ប៊ូតុងត្រឡប់ក្រោយ ឬ បោះបង់
+        // ប៊ូតុងត្រឡប់ក្រោយ ឬ បោះបង់ទៅកាន់ Menu មេ
         if (data === "cancel_to_main") {
             delete userSessions[chatId];
             const session = await Session.findOne({ chatId: String(chatId) });
@@ -331,7 +332,7 @@ bot.on("callback_query", async (query) => {
         if (data === "main_absence") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `👤 ${w.name} (${w.dailySalary.toLocaleString()}៛)`, callback_data: `abs_select_${w.id}` }]);
-            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); // ប៊ូតុងបោះបង់
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); 
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដើម្បីកត់អវត្តមាន៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
@@ -339,7 +340,7 @@ bot.on("callback_query", async (query) => {
         if (data === "main_view_absence") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `📋 ${w.name}`, callback_data: `history_${w.id}` }]);
-            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); // ប៊ូតុងបោះបង់
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); 
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដើម្បីមើលប្រវត្តិច្បាប់៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
@@ -354,7 +355,7 @@ bot.on("callback_query", async (query) => {
         if (data === "main_deleteworker") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `🗑 លុប៖ ${w.name}`, callback_data: `del_select_${w.id}` }]);
-            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); // ប៊ូតុងបោះបង់
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); 
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដែលអ្នកចង់លុបឈ្មោះ៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
@@ -416,7 +417,7 @@ bot.on("callback_query", async (query) => {
                 reply_markup: {
                     inline_keyboard: [
                         [{ text: "❌ យល់ព្រមលុបចោល", callback_data: `confirm_del_${workerId}` }],
-                        [{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }] // បោះបង់ត្រឡប់ទៅ Main Menu វិញ
+                        [{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }] 
                     ]
                 }
             });
