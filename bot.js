@@ -12,8 +12,6 @@ CONFIG & MONGO URL CONNECTION
 */
 const TOKEN = process.env.BOT_TOKEN;
 const PORT = process.env.PORT || 3000;
-
-// តំណភ្ជាប់ទៅកាន់ MongoDB Cloud របស់បងផ្ទាល់
 const MONGO_URL = "mongodb+srv://allinonebot:allinonebot123@amertakcluster.m5zjxka.mongodb.net/worker_db?retryWrites=true&w=majority&appName=AmertakCluster";
 
 if (!TOKEN) {
@@ -44,7 +42,8 @@ mongoose.connect(MONGO_URL)
 
 // ទម្រង់ទិន្នន័យ (Database Schemas)
 const AccountSchema = new mongoose.Schema({
-    id: { type: String, required: true, unique: true }, 
+    id: { type: String, required: true, unique: true }, // លេខកូដប្រូជេក (Project ID) ឧទាហរណ៍: "1", "2"
+    creatorId: { type: String, required: true },       // លេខ Telegram ID របស់អ្នកបង្កើត
     projectName: { type: String, required: true },
     password: { type: String, required: true },
     workers: [{
@@ -74,7 +73,8 @@ console.log("Bot Started");
 
 bot.setMyCommands([
     { command: "start", description: "🚀 ចាប់ផ្តើម / ម៉ឺនុយមេ" },
-    { command: "id", description: "🆔 មើល និងចម្លង Telegram ID របស់អ្នក" },
+    { command: "id", description: "🆔 មើល Telegram ID របស់អ្នក" },
+    { command: "myprojects", description: "📁 មើលបញ្ជីប្រូជេកទាំងអស់របស់អ្នក" },
     { command: "logout", description: "🚪 ចាកចេញពីប្រូជេកបច្ចុប្បន្ន" },
     { command: "addworker", description: "➕ បន្ថែមកម្មករថ្មី" },
     { command: "listworkers", description: "👷 មើលបញ្ជីឈ្មោះកម្មករ" },
@@ -91,7 +91,7 @@ HELPERS
 function validatePassword(password) {
     const hasLetter = /[a-zA-Z]/.test(password);
     const hasNumber = /[0-9]/.test(password);
-    const isLongEnough = password.length >= 8;
+    const isLongEnough = password.length >= 6; // ប្តូរមកត្រឹម 6 ខ្ទង់ដើម្បីងាយស្រួលចាំ
     return hasLetter && hasNumber && isLongEnough;
 }
 
@@ -106,7 +106,7 @@ function getWeekDates() {
     const currentDay = now.getDay();
     const monday = new Date(now);
     const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-    monday.setDate(now.getDate() + distanceToDistance);
+    monday.setDate(now.getDate() + distanceToMonday);
     
     for (let i = 0; i < 6; i++) {
         const nextDay = new Date(monday);
@@ -135,17 +135,17 @@ const MAIN_INLINE_KEYBOARD = [
     [{ text: "🚪 ចាកចេញ (Logout)", callback_data: "main_logout" }]
 ];
 
-function sendMainMenu(chatId, projectName) {
-    const text = `📁 ប្រូជេកបច្ចុប្បន្ន៖ **${projectName}**\n👷 **ម៉ឺនុយបញ្ជាចម្បង**\n\nសូមជ្រើសរើសមុខងារណាមួយខាងក្រោមដើម្បីគ្រប់គ្រង៖`;
+function sendMainMenu(chatId, projectName, projectId) {
+    const text = `📁 ប្រូជេកបច្ចុប្បន្ន៖ **${projectName}** (ID: \`${projectId}\`)\n👷 **ម៉ឺនុយបញ្ជាចម្បង**\n\nសូមជ្រើសរើសមុខងារណាមួយខាងក្រោមដើម្បីគ្រប់គ្រង៖`;
     bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
 }
 
 function sendAuthRequired(chatId, telegramId) {
     const text = `🔒 **មិនទាន់បានចូលប្រើប្រាស់ប្រូជេកទេ!**\n\n` +
-                 `🆔 Telegram ID របស់អ្នកគឺ៖ \`${telegramId}\` *(ចុចលើលេខដើម្បី Copy)*\n\n` +
+                 `🆔 Telegram ID របស់អ្នកគឺ៖ \`${telegramId}\`\n\n` +
                  `សូមជ្រើសរើសមុខងារខាងក្រោម៖\n` +
-                 `1️⃣ **បង្កើតប្រូជេកថ្មី (Register)**៖ បើមិនទាន់មានប្រូជេកសោះ\n` +
-                 `2️⃣ **ចូលប្រើប្រូជេក (Login)**៖ ដើម្បីទាញយកទិន្នន័យប្រូជេកមកប្រើ`;
+                 `1️⃣ **Register**៖ ដើម្បីបង្កើតប្រូជេកថ្មី (អាចបង្កើតបានច្រើន)\n` +
+                 `2️⃣ **Login**៖ ដើម្បីចូលប្រើប្រូជេកដែលធ្លាប់បង្កើតរួច`;
     
     bot.sendMessage(chatId, text, {
         parse_mode: "Markdown",
@@ -166,7 +166,7 @@ async function handleLogout(chatId) {
 
 /*
 ========================================
-COMMAND HANDLERS (បាន Fix ឱ្យដំណើរការ 100%)
+COMMAND HANDLERS
 ========================================
 */
 bot.onText(/^\/start$/, async (msg) => {
@@ -183,20 +183,18 @@ bot.onText(/^\/start$/, async (msg) => {
         return sendAuthRequired(msg.chat.id, msg.from.id);
     }
 
-    const welcomeText = `👋 សួស្តី! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងប្រាក់ខែកម្មករ (រក្សាទុកលើ MongoDB សុវត្ថិភាព 100%)។\n\n` +
-                        `📁 ប្រូជេកសកម្ម៖ **${account.projectName}**\n` +
+    const welcomeText = `👋 សួស្តី! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងកម្មករ។\n\n` +
+                        `📁 ប្រូជេកសកម្ម៖ **${account.projectName}** (Project ID: \`${account.id}\`)\n` +
                         `🆔 Telegram ID របស់អ្នក៖ \`${msg.from.id}\`\n\n` +
-                        `ℹ️ **របៀបប្រើប្រាស់៖**\n` +
-                        `• ប្រើប៊ូតុងបញ្ជាដែលផ្ញើមកជាមួយសារ (Inline Keyboard) ដើម្បីបញ្ជាលឿនរហ័ស។\n` +
-                        `• រាល់ពេលបំពេញតម្លៃ គ្រាន់តែវាយបញ្ចូលត្រង់ៗក្នុងប្រអប់សារជាការស្រេច។`;
+                        `ℹ️ លោកអ្នកអាចប្រើម៉ឺនុយប៊ូតុងខាងក្រោមដើម្បីបញ្ជាការងារលឿនរហ័ស។`;
     
     bot.sendMessage(msg.chat.id, welcomeText, { parse_mode: "Markdown" }).then(() => {
-        sendMainMenu(msg.chat.id, account.projectName);
+        sendMainMenu(msg.chat.id, account.projectName, account.id);
     });
 });
 
 bot.onText(/^\/id$/, (msg) => {
-    bot.sendMessage(msg.chat.id, `🆔 Telegram ID របស់អ្នកគឺ៖ \`${msg.from.id}\`\n\n*(លោកអ្នកគ្រាន់តែចុចចំលេខ ID ខាងលើ វានឹងចម្លង Copy ទុកស្វ័យប្រវត្តិភ្លាមៗ)*`, { parse_mode: "Markdown" });
+    bot.sendMessage(msg.chat.id, `🆔 Telegram ID របស់អ្នកគឺ៖ \`${msg.from.id}\` *(ចុចដើម្បី Copy)*`, { parse_mode: "Markdown" });
 });
 
 bot.onText(/^\/logout$/, async (msg) => {
@@ -204,7 +202,23 @@ bot.onText(/^\/logout$/, async (msg) => {
     sendAuthRequired(msg.chat.id, msg.from.id);
 });
 
-// បាន Fix មុខងារ /listworkers, /addworker, /report ឱ្យដំណើរការលឿនរហ័ស
+// មើលបញ្ជីប្រូជេកទាំងអស់ដែល Telegram ID នេះធ្លាប់បានបង្កើត
+bot.onText(/^\/myprojects$/, async (msg) => {
+    const creatorId = String(msg.from.id);
+    const projects = await Account.find({ creatorId: creatorId });
+    
+    if (projects.length === 0) {
+        return bot.sendMessage(msg.chat.id, "❌ លោកអ្នកមិនទាន់ធ្លាប់បានបង្កើតប្រូជេកណាមួយឡើយ។");
+    }
+    
+    let text = "📁 **បញ្ជីប្រូជេករបស់អ្នកទាំងអស់៖**\n\n";
+    projects.forEach((p, idx) => {
+        text += `${idx + 1}. 🏗 **${p.projectName}**\n   • 🔑 Project ID: \`${p.id}\`\n   • 🔐 Password: \`${p.password}\`\n\n`;
+    });
+    text += "ℹ️ *បងអាចយក Project ID និង Password ខាងលើទៅវាយបញ្ចូលត្រង់ផ្នែក Login បាន!*";
+    bot.sendMessage(msg.chat.id, text, { parse_mode: "Markdown" });
+});
+
 bot.onText(/^\/listworkers$/, async (msg) => {
     delete userSessions[msg.chat.id];
     const session = await Session.findOne({ chatId: String(msg.chat.id) });
@@ -255,7 +269,7 @@ bot.onText(/^\/report$/, async (msg) => {
 
 /*
 ========================================
-CALLBACK QUERY HANDLER (ប៊ូតុងបញ្ជា)
+CALLBACK QUERY HANDLER
 ========================================
 */
 bot.on("callback_query", async (query) => {
@@ -271,22 +285,21 @@ bot.on("callback_query", async (query) => {
 
         if (data === "auth_register") {
             userSessions[chatId] = { state: "REGISTRATION_PROJECT_NAME" };
-            return bot.sendMessage(chatId, `✍️ **ជំហានទី១៖** សូមវាយបញ្ចូល **ឈ្មោះប្រូជេក (Project Name)** របស់អ្នក៖\n\n*ឧទាហរណ៍៖ ការដ្ឋានអាគារA*`);
+            return bot.sendMessage(chatId, `✍️ **ជំហានទី១៖** សូមវាយបញ្ចូល **ឈ្មោះប្រូជេក** ថ្មីរបស់អ្នក៖\n\n*ឧទាហរណ៍៖ ការដ្ឋានចោមចៅ*`);
         }
 
         if (data === "auth_login") {
             userSessions[chatId] = { state: "LOGIN_CREDENTIALS" };
-            return bot.sendMessage(chatId, `✍️ **សូមវាយបញ្ចូល Telegram ID និងពាក្យសម្ងាត់ប្រូជេក៖**\n\n*ទម្រង់វាយ៖* \`TelegramID ពាក្យសម្ងាត់\`\n*ឧទាហរណ៍៖* \`${telegramId} boss1234\``, { parse_mode: "Markdown" });
+            return bot.sendMessage(chatId, `✍️ **សូមវាយបញ្ចូល Project ID និង ពាក្យសម្ងាត់ប្រូជេក៖**\n\n*ទម្រង់វាយ៖* \`ProjectID ពាក្យសម្ងាត់\`\n*ឧទាហរណ៍៖* \`1 boss123\``, { parse_mode: "Markdown" });
         }
 
-        // ប៊ូតុងត្រឡប់ក្រោយ ឬ បោះបង់ទៅកាន់ Menu មេ
         if (data === "cancel_to_main") {
             delete userSessions[chatId];
             const session = await Session.findOne({ chatId: String(chatId) });
             if (!session) return sendAuthRequired(chatId, telegramId);
             const account = await Account.findOne({ id: session.projectId });
             if (!account) return sendAuthRequired(chatId, telegramId);
-            return sendMainMenu(chatId, account.projectName);
+            return sendMainMenu(chatId, account.projectName, account.id);
         }
 
         const session = await Session.findOne({ chatId: String(chatId) });
@@ -301,14 +314,14 @@ bot.on("callback_query", async (query) => {
         }
 
         if (data === "main_listworkers") {
-            if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករនៅក្នុងប្រព័ន្ធឡើយ។", { reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+            if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករនៅក្នុងប្រព័ន្ធឡើយ。");
             let text = "👷 **បញ្ជីឈ្មោះកម្មករ និងប្រាក់ថ្ងៃ**\n\n";
             account.workers.forEach(w => { text += `• 👤 **${w.name}** | ប្រាក់ថ្ងៃ: ${w.dailySalary.toLocaleString()}៛\n`; });
             return bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
         }
 
         if (data === "main_report") {
-            if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។", { reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+            if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             let text = "💰 **📊 របាយការណ៍បើកប្រាក់ប្រចាំសប្តាហ៍**\n\n";
             account.workers.forEach((w, index) => {
                 let total = w.dailySalary * 6;
@@ -328,15 +341,13 @@ bot.on("callback_query", async (query) => {
             return bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
         }
 
-        // បន្ថែមប៊ូតុងបោះបង់ ពេលចុច កត់អវត្តមាន
         if (data === "main_absence") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
-            const buttons = account.workers.map(w => [{ text: `👤 ${w.name} (${w.dailySalary.toLocaleString()}៛)`, callback_data: `abs_select_${w.id}` }]);
+            const buttons = account.workers.map(w => [{ text: `👤 ${w.name}`, callback_data: `abs_select_${w.id}` }]);
             buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); 
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដើម្បីកត់អវត្តមាន៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
-        // បន្ថែមប៊ូតុងបោះបង់ ពេលចុច មើលអវត្តមាន
         if (data === "main_view_absence") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `📋 ${w.name}`, callback_data: `history_${w.id}` }]);
@@ -351,7 +362,6 @@ bot.on("callback_query", async (query) => {
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដែលចង់កត់ត្រាបើកលុយមុន៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
-        // បន្ថែមប៊ូតុងបោះបង់ ពេលចុច លុបកម្មករ
         if (data === "main_deleteworker") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `🗑 លុប៖ ${w.name}`, callback_data: `del_select_${w.id}` }]);
@@ -371,7 +381,7 @@ bot.on("callback_query", async (query) => {
                         [{ text: `🌅 ឈប់ព្រឹក (កាត់ -${half.toLocaleString()}៛)`, callback_data: `abs_save_morning_${workerId}` }],
                         [{ text: `🌙 ឈប់ល្ងាច (កាត់ -${half.toLocaleString()}៛)`, callback_data: `abs_save_evening_${workerId}` }],
                         [{ text: `❌ ឈប់មួយថ្ងៃពេញ (កាត់ -${worker.dailySalary.toLocaleString()}៛)`, callback_data: `abs_save_full_${workerId}` }],
-                        [{ text: "✅ មកធ្វើការធម្មតាវិញ (លុបច្បាប់ថ្ងៃនេះ)", callback_data: `abs_save_present_${workerId}` }],
+                        [{ text: "✅ មកធ្វើការធម្មតាវិញ", callback_data: `abs_save_present_${workerId}` }],
                         [{ text: "🔄 បោះបង់", callback_data: "main_absence" }]
                     ]
                 }
@@ -389,7 +399,7 @@ bot.on("callback_query", async (query) => {
                 delete account.attendance[today][wId];
                 account.markModified("attendance");
                 await account.save();
-                return bot.sendMessage(chatId, `✅ បានកែប្រែ៖ **${account.workers.find(w=>w.id===wId).name}** មកធ្វើការពេញថ្ងៃវិញ។`, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+                return bot.sendMessage(chatId, `✅ បានកែប្រែ៖ **${account.workers.find(w=>w.id===wId).name}** មកធ្វើការធម្មតាវិញ។`, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
             }
 
             let type = ""; let wId = 0;
@@ -406,7 +416,7 @@ bot.on("callback_query", async (query) => {
         if (data.startsWith("borrow_select_")) {
             const workerId = Number(data.replace("borrow_select_", ""));
             userSessions[chatId] = { state: "AWAITING_BORROW_AMOUNT", workerId: workerId };
-            return bot.sendMessage(chatId, `✍️ សូមវាយបញ្ចូល **ចំនួនទឹកប្រាក់** ដែលកម្មករឈ្មោះ "${account.workers.find(w=>w.id===workerId).name}" បានបើកមុន៖\n\n*(ឧទាហរណ៍៖ 50000)*`);
+            return bot.sendMessage(chatId, `✍️ សូមវាយបញ្ចូល **ចំនួនទឹកប្រាក់** ដែលកម្មករឈ្មោះ "${account.workers.find(w=>w.id===workerId).name}" បានបើកមុន៖`);
         }
 
         if (data.startsWith("del_select_")) {
@@ -454,7 +464,7 @@ bot.on("callback_query", async (query) => {
 
 /*
 ========================================
-MESSAGE HANDLER (រៀបចំចាប់អត្ថបទ)
+MESSAGE HANDLER
 ========================================
 */
 bot.on("message", async (msg) => {
@@ -469,26 +479,24 @@ bot.on("message", async (msg) => {
 
     if (sessionState.state === "REGISTRATION_PROJECT_NAME") {
         if (text.length < 2) return bot.sendMessage(chatId, "❌ ឈ្មោះប្រូជេកខ្លីពេកហើយ! សូមវាយម្តងទៀត៖");
-        
         userSessions[chatId] = { state: "REGISTRATION_PASSWORD", projectName: text };
-        return bot.sendMessage(chatId, `✍️ **ជំហានទី២៖** សូមបង្កើតពាក្យសម្ងាត់សម្រាប់ប្រូជេក "${text}"៖\n\n⚠️ *លក្ខខណ្ឌ៖* ត្រូវមាន**អក្សរលាយលេខ** ប្រវែងយ៉ាងតិច **៨ ខ្ទង់**`);
+        return bot.sendMessage(chatId, `✍️ **ជំហានទី២៖** សូមបង្កើតពាក្យសម្ងាត់សម្រាប់ប្រូជេក "${text}"៖\n\n⚠️ *លក្ខខណ្ឌ៖* ត្រូវមាន**អក្សរលាយលេខ** យ៉ាងតិច **៦ ខ្ទង់** (ឧទាហរណ៍៖ boss123)`);
     }
 
     if (sessionState.state === "REGISTRATION_PASSWORD") {
         if (!validatePassword(text)) {
-            return bot.sendMessage(chatId, "❌ **ពាក្យសម្ងាត់មិនត្រូវតាមលក្ខខណ្ឌទេ!**\n\nសូមវាយម្តងទៀត៖ ត្រូវតែមាន**អក្សរលាយលេខ** និងយ៉ាងតិច **8 ខ្ទង់** (ឧទាហរណ៍៖ `boss1234`)");
+            return bot.sendMessage(chatId, "❌ **ពាក្យសម្ងាត់មិនត្រូវតាមលក្ខខណ្ឌទេ!**\n\nសូមវាយម្តងទៀត៖ ត្រូវមាន**អក្សរលាយលេខ** និងយ៉ាងតិច **៦ ខ្ទង់**");
         }
 
         const projName = sessionState.projectName;
-        const accountKey = String(telegramId); 
-
-        const existingAccount = await Account.findOne({ id: accountKey });
-        if (existingAccount) {
-            return bot.sendMessage(chatId, `❌ **Telegram ID របស់អ្នកធ្លាប់បានបង្កើតប្រូជេករួចម្តងហើយ!**\n\nមិនអាចបង្កើតថ្មីជាន់គ្នាបានទេ ប៉ុន្តែអ្នកអាចចុច Login ចូលប្រើប្រាស់បាន។`);
-        }
+        
+        // ស្វែងរកលេខកូដ Project ID បន្ទាប់ដោយស្វ័យប្រវត្តិ (Auto-increment ID: 1, 2, 3...)
+        const allAccounts = await Account.find({});
+        const nextProjectId = allAccounts.length > 0 ? String(Math.max(...allAccounts.map(a => Number(a.id))) + 1) : "1";
 
         const newAccount = new Account({
-            id: accountKey,
+            id: nextProjectId,
+            creatorId: String(telegramId),
             projectName: projName,
             password: text,
             workers: [],
@@ -499,43 +507,44 @@ bot.on("message", async (msg) => {
 
         await Session.findOneAndUpdate(
             { chatId: String(chatId) },
-            { projectId: accountKey },
+            { projectId: nextProjectId },
             { upsert: true, new: true }
         );
 
         delete userSessions[chatId];
 
-        const successText = `🎉 **បង្កើតប្រូជេក និងចុះឈ្មោះជោគជ័យ!**\n\n` +
-                            `📁 ឈ្មោះប្រូជេក៖ **${projName}**\n` +
-                            `🆔 លេខ Telegram ID (Account ID)៖ \`${accountKey}\`\n` +
-                            `🔑 ពាក្យសម្ងាត់ប្រូជេក៖ \`${text}\`\n\n` +
-                            `ℹ️ រក្សាទុកលើ Cloud MongoDB សុវត្ថិភាព 100%! លោកអ្នកអាចយក \`Telegram ID\` និង \`ពាក្យសម្ងាត់\` នេះទៅ Login ប្រើរួមគ្នានៅលើទូរស័ព្ទផ្សេងបាន!`;
+        const successText = `🎉 **បង្កើតប្រូជេកបានជោគជ័យ!**\n\n` +
+                            `🏗 ឈ្មោះប្រូជេក៖ **${projName}**\n` +
+                            `🔑 **Project ID រីករាយ៖** \`${nextProjectId}\` *(សូមចាំលេខកូដនេះសម្រាប់ Login)*\n` +
+                            `🔐 ពាក្យសម្ងាត់ប្រូជេក៖ \`${text}\`\n\n` +
+                            `ℹ️ *Telegram ID មួយអាចបង្កើតបានច្រើនប្រូជេក។ វាយបញ្ជា \`/myprojects\` ដើម្បីមើលបញ្ជីប្រូជេកទាំងអស់ដែលបងធ្លាប់បង្កើតបានគ្រប់ពេល!*`;
         
-        return bot.sendMessage(chatId, successText, { parse_mode: "Markdown" }).then(() => sendMainMenu(chatId, projName));
+        return bot.sendMessage(chatId, successText, { parse_mode: "Markdown" }).then(() => sendMainMenu(chatId, projName, nextProjectId));
     }
 
     if (sessionState.state === "LOGIN_CREDENTIALS") {
-        const match = text.match(/^(\d+)\s+(.+)$/);
+        const match = text.match(/^(\w+)\s+(.+)$/);
         if (!match) {
-            return bot.sendMessage(chatId, "❌ ទម្រង់វាយខុសហើយ! សូមវាយតាមទម្រង់៖ `TelegramID ពាក្យសម្ងាត់` (ឧទាហរណ៍៖ `5544332211 boss1234`)");
+            return bot.sendMessage(chatId, "❌ ទម្រង់វាយខុសហើយ! សូមវាយតាមទម្រង់៖ `ProjectID ពាក្យសម្ងាត់` (ឧទាហរណ៍៖ `1 boss123`)");
         }
         
-        const inputId = match[1];
+        const inputProjectId = match[1].trim();
         const inputPassword = match[2].trim();
 
-        const account = await Account.findOne({ id: inputId, password: inputPassword });
+        // ស្វែងរកប្រូជេកដោយប្រើប្រាស់ Project ID ផ្ទាល់
+        const account = await Account.findOne({ id: inputProjectId, password: inputPassword });
 
         if (account) {
             await Session.findOneAndUpdate(
                 { chatId: String(chatId) },
-                { projectId: inputId },
+                { projectId: inputProjectId },
                 { upsert: true, new: true }
             );
             delete userSessions[chatId];
 
-            return bot.sendMessage(chatId, `✅ **ចូលប្រើប្រាស់ជោគជ័យ!**\n\nបានទាញយកទិន្នន័យប្រូជេក "**${account.projectName}**" មកប្រើលើឧបករណ៍នេះ។`, { parse_mode: "Markdown" }).then(() => sendMainMenu(chatId, account.projectName));
+            return bot.sendMessage(chatId, `✅ **ចូលប្រើប្រាស់ជោគជ័យ!**\n\nបានបើកប្រូជេក "**${account.projectName}**" មកប្រើប្រាស់។`, { parse_mode: "Markdown" }).then(() => sendMainMenu(chatId, account.projectName, account.id));
         } else {
-            return bot.sendMessage(chatId, "❌ **Telegram ID ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវឡើយ!** សូមវាយបញ្ចូលម្តងទៀត៖");
+            return bot.sendMessage(chatId, "❌ **Project ID ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវឡើយ!** សូមពិនិត្យរួចវាយបញ្ចូលម្តងទៀត៖");
         }
     }
 
@@ -563,7 +572,7 @@ bot.on("message", async (msg) => {
 
     if (sessionState.state === "AWAITING_BORROW_AMOUNT") {
         const amount = Number(text);
-        if (isNaN(amount) || amount <= 0) return bot.sendMessage(chatId, "❌ សូមវាយបញ្ចូលតែចំនួនលេខទឹកប្រាក់ប៉ុណ្ណោះ! (ឧទាហរណ៍៖ 50000)");
+        if (isNaN(amount) || amount <= 0) return bot.sendMessage(chatId, "❌ សូមវាយបញ្ចូលតែចំនួនលេខទឹកប្រាក់ប៉ុណ្ណោះ!");
 
         const workerId = sessionState.workerId;
         const worker = account.workers.find(w => w.id === workerId);
@@ -576,26 +585,21 @@ bot.on("message", async (msg) => {
         await account.save();
         delete userSessions[chatId];
 
-        return bot.sendMessage(chatId, `💸 កត់ត្រាលុយបើកមុនរួចរាល់៖\n\n👤 កម្មករ៖ **${worker.name}**\n💵 ចំនួនទឹកប្រាក់៖ **${amount.toLocaleString()}៛**\n💰 ជំពាក់សរុបសប្តាហ៍នេះ៖ **${account.borrows[workerId].toLocaleString()}៛**`, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+        return bot.sendMessage(chatId, `💸 កត់ត្រាលុយបើកមុនរួចរាល់៖\n\n👤 កម្មករ៖ **${worker.name}**\n💵 ចំនួនទឹកប្រាក់៖ **${amount.toLocaleString()}៛**`, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
     }
 });
 
 /*
 ========================================
-CRON SCHEDULES (លុបអវត្តមានរាល់ថ្ងៃអាទិត្យ)
+CRON SCHEDULES
 ========================================
 */
 cron.schedule("0 0 * * 0", async () => {
     try {
         await Account.updateMany({}, { $set: { attendance: {}, borrows: {} } });
-        console.log("All projects reset successfully for the new week on MongoDB.");
+        console.log("All projects reset successfully.");
     } catch (err) { console.error("Cron job error:", err); }
 }, { timezone: "Asia/Phnom_Penh" });
 
-/*
-========================================
-ERROR HANDLERS
-========================================
-*/
 bot.on("polling_error", err => console.error(err.message));
 process.on("uncaughtException", err => console.error(err));
