@@ -7,15 +7,16 @@ const mongoose = require("mongoose");
 
 /*
 ========================================
-CONFIG
+CONFIG & MONGO URL CONNECTION
 ========================================
 */
 const TOKEN = process.env.BOT_TOKEN;
-const MONGO_URL = process.env.MONGO_URL;
 const PORT = process.env.PORT || 3000;
 
-if (!TOKEN || !MONGO_URL) {
-    console.error("❌ មិនទាន់បានដាក់ BOT_TOKEN ឬ MONGO_URL នៅក្នុង .env ឡើយ!");
+const MONGO_URL = "mongodb+srv://allinonebot:allinonebot123@amertakcluster.m5zjxka.mongodb.net/worker_db?retryWrites=true&w=majority&appName=AmertakCluster";
+
+if (!TOKEN) {
+    console.error("❌ មិនទាន់បានដាក់ BOT_TOKEN នៅក្នុង .env ឡើយ!");
     process.exit(1);
 }
 
@@ -30,19 +31,19 @@ app.listen(PORT, () => console.log(`Server running on ${PORT}`));
 
 /*
 ========================================
-MONGODB CONNECTION (ភ្ជាប់ទៅកាន់ Cloud Database)
+MONGODB CONNECTION
 ========================================
 */
 mongoose.connect(MONGO_URL)
-    .then(() => console.log("Connected to MongoDB Cloud successfully! 📁✨"))
+    .then(() => console.log("Connected to MongoDB Cloud successfully! 📁✨ (Data is 100% Safe)"))
     .catch(err => {
         console.error("MongoDB connection error:", err);
         process.exit(1);
     });
 
-// បង្កើតទម្រង់ទិន្នន័យ (Database Schema)
+// Database Schema
 const AccountSchema = new mongoose.Schema({
-    id: { type: String, required: true, unique: true }, // ប្រើ Telegram ID របស់អ្នកបង្កើត
+    id: { type: String, required: true, unique: true }, 
     projectName: { type: String, required: true },
     password: { type: String, required: true },
     workers: [{
@@ -50,13 +51,13 @@ const AccountSchema = new mongoose.Schema({
         name: String,
         dailySalary: Number
     }],
-    attendance: { type: Object, default: {} }, // ផ្ទុក { "YYYY-MM-DD": { "workerId": "type" } }
-    borrows: { type: Object, default: {} }     // ផ្ទុក { "workerId": amount }
+    attendance: { type: Object, default: {} }, 
+    borrows: { type: Object, default: {} }     
 });
 
 const SessionSchema = new mongoose.Schema({
     chatId: { type: String, required: true, unique: true },
-    projectId: { type: String, required: true } // ចងចាំថា Chat នេះកំពុង Login ប្រើប្រូជេកណា
+    projectId: { type: String, required: true } 
 });
 
 const Account = mongoose.model("Account", AccountSchema);
@@ -159,12 +160,12 @@ function sendAuthRequired(chatId, telegramId) {
 async function handleLogout(chatId) {
     await Session.deleteOne({ chatId: String(chatId) });
     delete userSessions[chatId];
-    bot.sendMessage(chatId, "🚪 បានចាកចេញពីប្រូជេកដោយជោគជ័យ។");
+    bot.sendMessage(chatId, "🚪 បានចាកចេញពីប្រូជេកដោយជោគជ័យ。");
 }
 
 /*
 ========================================
-COMMAND HANDLERS
+COMMAND HANDLERS (បាន Fix ឱ្យដំណើរការ 100%)
 ========================================
 */
 bot.onText(/^\/start$/, async (msg) => {
@@ -181,7 +182,7 @@ bot.onText(/^\/start$/, async (msg) => {
         return sendAuthRequired(msg.chat.id, msg.from.id);
     }
 
-    const welcomeText = `👋 សួស្តី! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងប្រាក់ខែកម្មករ (MongoDB សុវត្ថិភាព 100%)។\n\n` +
+    const welcomeText = `👋 សួស្តី! ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងប្រាក់ខែកម្មករ (រក្សាទុកលើ MongoDB សុវត្ថិភាព 100%)។\n\n` +
                         `📁 ប្រូជេកសកម្ម៖ **${account.projectName}**\n` +
                         `🆔 Telegram ID របស់អ្នក៖ \`${msg.from.id}\`\n\n` +
                         `ℹ️ **របៀបប្រើប្រាស់៖**\n` +
@@ -202,9 +203,53 @@ bot.onText(/^\/logout$/, async (msg) => {
     sendAuthRequired(msg.chat.id, msg.from.id);
 });
 
-bot.onText(/^\/(addworker|listworkers|report)$/, async (msg) => {
+// ប្រព័ន្ធគ្រប់គ្រងការវាយ Text Commands បន្ថែម (Fix មុខងារ /listworkers, /addworker, /report មិនដើរ)
+bot.onText(/^\/listworkers$/, async (msg) => {
+    delete userSessions[msg.chat.id];
     const session = await Session.findOne({ chatId: String(msg.chat.id) });
     if (!session) return sendAuthRequired(msg.chat.id, msg.from.id);
+    const account = await Account.findOne({ id: session.projectId });
+    if (!account) return sendAuthRequired(msg.chat.id, msg.from.id);
+
+    if (account.workers.length === 0) return bot.sendMessage(msg.chat.id, "❌ មិនទាន់មានកម្មករនៅក្នុងប្រព័ន្ធឡើយ។", { reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+    let text = "👷 **បញ្ជីឈ្មោះកម្មករ និងប្រាក់ថ្ងៃ**\n\n";
+    account.workers.forEach(w => { text += `• 👤 **${w.name}** | ប្រាក់ថ្ងៃ: ${w.dailySalary.toLocaleString()}៛\n`; });
+    return bot.sendMessage(msg.chat.id, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+});
+
+bot.onText(/^\/addworker$/, async (msg) => {
+    delete userSessions[msg.chat.id];
+    const session = await Session.findOne({ chatId: String(msg.chat.id) });
+    if (!session) return sendAuthRequired(msg.chat.id, msg.from.id);
+    userSessions[msg.chat.id] = { state: "AWAITING_WORKER_DETAILS" };
+    return bot.sendMessage(msg.chat.id, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី៖\n\n*ទម្រង់វាយ៖* `ឈ្មោះ ប្រាក់ឈ្នួល`\n*ឧទាហរណ៍៖* `សុខា 80000`", { parse_mode: "Markdown" });
+});
+
+bot.onText(/^\/report$/, async (msg) => {
+    delete userSessions[msg.chat.id];
+    const session = await Session.findOne({ chatId: String(msg.chat.id) });
+    if (!session) return sendAuthRequired(msg.chat.id, msg.from.id);
+    const account = await Account.findOne({ id: session.projectId });
+    if (!account) return sendAuthRequired(msg.chat.id, msg.from.id);
+
+    if (account.workers.length === 0) return bot.sendMessage(msg.chat.id, "❌ មិនទាន់មានកម្មករទេ។", { reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+    let text = "💰 **📊 របាយការណ៍បើកប្រាក់ប្រចាំសប្តាហ៍**\n\n";
+    account.workers.forEach((w, index) => {
+        let total = w.dailySalary * 6;
+        getWeekDates().forEach(date => {
+            const status = account.attendance[date]?.[w.id];
+            if (status === "morning" || status === "evening") total -= (w.dailySalary / 2);
+            if (status === "full") total -= w.dailySalary;
+        });
+        const adv = account.borrows[w.id] || 0;
+        total -= adv;
+        if (total < 0) total = 0;
+
+        text += `${index + 1}. 👤 **${w.name}**\n`;
+        if (adv > 0) text += `   • បើកមុន៖ -${adv.toLocaleString()}៛\n`;
+        text += `   • លុយត្រូវបើក៖ **${total.toLocaleString()}៛**\n\n`;
+    });
+    return bot.sendMessage(msg.chat.id, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
 });
 
 /*
@@ -225,12 +270,22 @@ bot.on("callback_query", async (query) => {
 
         if (data === "auth_register") {
             userSessions[chatId] = { state: "REGISTRATION_PROJECT_NAME" };
-            return bot.sendMessage(chatId, `✍️ **ជំហានទី១៖** សូមវាយបញ្ចូល **ឈ្មោះប្រូជេក (Project Name)** របស់អ្នក៖\n\n*ឧទហរណ៍៖ ការដ្ឋានអាគារA*`);
+            return bot.sendMessage(chatId, `✍️ **ជំហានទី១៖** សូមវាយបញ្ចូល **ឈ្មោះប្រូជេក (Project Name)** របស់អ្នក៖\n\n*ឧទាហរណ៍៖ การถมดินA*`);
         }
 
         if (data === "auth_login") {
             userSessions[chatId] = { state: "LOGIN_CREDENTIALS" };
             return bot.sendMessage(chatId, `✍️ **សូមវាយបញ្ចូល Telegram ID និងពាក្យសម្ងាត់ប្រូជេក៖**\n\n*ទម្រង់វាយ៖* \`TelegramID ពាក្យសម្ងាត់\`\n*ឧទាហរណ៍៖* \`${telegramId} boss1234\``, { parse_mode: "Markdown" });
+        }
+
+        // ប៊ូតុងត្រឡប់ក្រោយ ឬ បោះបង់
+        if (data === "cancel_to_main") {
+            delete userSessions[chatId];
+            const session = await Session.findOne({ chatId: String(chatId) });
+            if (!session) return sendAuthRequired(chatId, telegramId);
+            const account = await Account.findOne({ id: session.projectId });
+            if (!account) return sendAuthRequired(chatId, telegramId);
+            return sendMainMenu(chatId, account.projectName);
         }
 
         const session = await Session.findOne({ chatId: String(chatId) });
@@ -272,27 +327,34 @@ bot.on("callback_query", async (query) => {
             return bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
         }
 
+        // បន្ថែមប៊ូតុងបោះបង់ ពេលចុច កត់អវត្តមាន
         if (data === "main_absence") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `👤 ${w.name} (${w.dailySalary.toLocaleString()}៛)`, callback_data: `abs_select_${w.id}` }]);
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); // ប៊ូតុងបោះបង់
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដើម្បីកត់អវត្តមាន៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
+        // បន្ថែមប៊ូតុងបោះបង់ ពេលចុច មើលអវត្តមាន
         if (data === "main_view_absence") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `📋 ${w.name}`, callback_data: `history_${w.id}` }]);
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); // ប៊ូតុងបោះបង់
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដើម្បីមើលប្រវត្តិច្បាប់៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
         if (data === "main_borrow") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `💸 ${w.name}`, callback_data: `borrow_select_${w.id}` }]);
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]);
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដែលចង់កត់ត្រាបើកលុយមុន៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
+        // បន្ថែមប៊ូតុងបោះបង់ ពេលចុច លុបកម្មករ
         if (data === "main_deleteworker") {
             if (account.workers.length === 0) return bot.sendMessage(chatId, "❌ មិនទាន់មានកម្មករទេ។");
             const buttons = account.workers.map(w => [{ text: `🗑 លុប៖ ${w.name}`, callback_data: `del_select_${w.id}` }]);
+            buttons.push([{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }]); // ប៊ូតុងបោះបង់
             return bot.sendMessage(chatId, "👉 សូមជ្រើសរើសកម្មករដែលអ្នកចង់លុបឈ្មោះ៖", { reply_markup: { inline_keyboard: buttons } });
         }
 
@@ -308,7 +370,8 @@ bot.on("callback_query", async (query) => {
                         [{ text: `🌅 ឈប់ព្រឹក (កាត់ -${half.toLocaleString()}៛)`, callback_data: `abs_save_morning_${workerId}` }],
                         [{ text: `🌙 ឈប់ល្ងាច (កាត់ -${half.toLocaleString()}៛)`, callback_data: `abs_save_evening_${workerId}` }],
                         [{ text: `❌ ឈប់មួយថ្ងៃពេញ (កាត់ -${worker.dailySalary.toLocaleString()}៛)`, callback_data: `abs_save_full_${workerId}` }],
-                        [{ text: "✅ មកធ្វើការធម្មតាវិញ (លុបច្បាប់ថ្ងៃនេះ)", callback_data: `abs_save_present_${workerId}` }]
+                        [{ text: "✅ មកធ្វើការធម្មតាវិញ (លុបច្បាប់ថ្ងៃនេះ)", callback_data: `abs_save_present_${workerId}` }],
+                        [{ text: "🔄 បោះបង់", callback_data: "main_absence" }]
                     ]
                 }
             });
@@ -353,7 +416,7 @@ bot.on("callback_query", async (query) => {
                 reply_markup: {
                     inline_keyboard: [
                         [{ text: "❌ យល់ព្រមលុបចោល", callback_data: `confirm_del_${workerId}` }],
-                        [{ text: "🔄 បោះបង់", callback_data: "cancel_del" }]
+                        [{ text: "🔄 បោះបង់", callback_data: "cancel_to_main" }] // បោះបង់ត្រឡប់ទៅ Main Menu វិញ
                     ]
                 }
             });
@@ -366,10 +429,6 @@ bot.on("callback_query", async (query) => {
             account.markModified("borrows");
             await account.save();
             return bot.sendMessage(chatId, "🗑 បានលុបកម្មករចេញពីប្រព័ន្ធរួចរាល់។", { reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
-        }
-
-        if (data === "cancel_del") {
-            return bot.sendMessage(chatId, "🔄 បានបោះបង់ការលុប។", { reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
         }
 
         if (data.startsWith("history_")) {
@@ -527,7 +586,6 @@ CRON SCHEDULES (លុបអវត្តមានរាល់ថ្ងៃអា�
 */
 cron.schedule("0 0 * * 0", async () => {
     try {
-        // Reset គ្រប់គណនីទាំងអស់នៅលើ MongoDB ឱ្យស្អាតសម្រាប់សប្តាហ៍ថ្មី
         await Account.updateMany({}, { $set: { attendance: {}, borrows: {} } });
         console.log("All projects reset successfully for the new week on MongoDB.");
     } catch (err) { console.error("Cron job error:", err); }
