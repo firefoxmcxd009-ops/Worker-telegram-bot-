@@ -77,7 +77,7 @@ async function initApp() {
 
     // 2. Fetch data from Server (នៅទីនេះលោកអ្នកត្រូវបង្កើត Endpoint ក្នុង bot.js)
     try {
-        const response = await fetch(`/api/dashboard-data?userId=${telegramId}`);
+        const response = await fetch('https://worker-telegram-bot-nwoq.onrender.com/api/dashboard-data?userId=' + telegramId);
         const data = await response.json();
         
         if (data.success) {
