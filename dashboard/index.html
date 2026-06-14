@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Worker Management Dashboard</title>
+    
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="light-mode theme-transition">
+
+    <div id="auth-modal" class="modal-overlay glass-effect active">
+        <div class="modal-content auth-box">
+            <div class="auth-header">
+                <i class="ph ph-shield-check"></i>
+                <h2 data-i18n="auth_title">ប្រព័ន្ធគ្រប់គ្រងកម្មករ</h2>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="tab-btn active" data-tab="login" data-i18n="tab_login">ចូលប្រើប្រាស់</button>
+                <button class="tab-btn" data-tab="register" data-i18n="tab_register">បង្កើតថ្មី</button>
+            </div>
+            
+            <form id="login-form" class="auth-form active">
+                <div class="input-group">
+                    <i class="ph ph-identification-card"></i>
+                    <input type="text" id="login-project-id" placeholder="Project ID" required>
+                </div>
+                <div class="input-group">
+                    <i class="ph ph-lock-key"></i>
+                    <input type="password" id="login-password" placeholder="Password" required>
+                </div>
+                <button type="submit" class="primary-btn full-width">
+                    <i class="ph ph-sign-in"></i> <span data-i18n="btn_login">ចូល</span>
+                </button>
+            </form>
+
+            <form id="register-form" class="auth-form hidden">
+                <div class="input-group">
+                    <i class="ph ph-buildings"></i>
+                    <input type="text" id="reg-project-name" placeholder="Project Name (ឈ្មោះប្រូជេក)" required>
+                </div>
+                <div class="input-group">
+                    <i class="ph ph-lock-key"></i>
+                    <input type="password" id="reg-password" placeholder="Password (អក្សរលាយលេខ >៦ខ្ទង់)" required>
+                </div>
+                <button type="submit" class="primary-btn full-width">
+                    <i class="ph ph-user-plus"></i> <span data-i18n="btn_register">បង្កើតប្រូជេក</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-container hidden" id="main-app">
+        
+        <aside class="sidebar glass-effect" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="ph ph-hard-hat"></i>
+                    <h2 data-i18n="app_name">ការដ្ឋាន</h2>
+                </div>
+                <button id="close-sidebar" class="icon-btn mobile-only"><i class="ph ph-x"></i></button>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-target="dashboard-view">
+                    <i class="ph ph-squares-four"></i> <span data-i18n="nav_overview">ទិដ្ឋភាពទូទៅ</span>
+                </a>
+                <a href="#" class="nav-item" data-target="workers-view">
+                    <i class="ph ph-users"></i> <span data-i18n="nav_workers">បញ្ជីកម្មករ</span>
+                </a>
+                <a href="#" class="nav-item" data-target="attendance-view">
+                    <i class="ph ph-calendar-check"></i> <span data-i18n="nav_attendance">កត់អវត្តមាន</span>
+                </a>
+                <a href="#" class="nav-item" data-target="borrow-view">
+                    <i class="ph ph-money"></i> <span data-i18n="nav_advance">បើកលុយមុន</span>
+                </a>
+                <a href="#" class="nav-item" data-target="report-view">
+                    <i class="ph ph-chart-bar"></i> <span data-i18n="nav_report">របាយការណ៍</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="project-info glass-effect">
+                    <p class="proj-name" id="display-proj-name">Project Name</p>
+                    <span class="proj-id">ID: <span id="display-proj-id">000</span></span>
+                </div>
+                <button id="logout-btn" class="logout-btn">
+                    <i class="ph ph-sign-out"></i> <span data-i18n="nav_logout">ចាកចេញ</span>
+                </button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            
+            <header class="topbar glass-effect">
+                <div class="topbar-left">
+                    <button id="menu-toggle" class="icon-btn mobile-only"><i class="ph ph-list"></i></button>
+                    <h1 id="page-title" data-i18n="nav_overview">ទិដ្ឋភាពទូទៅ</h1>
+                </div>
+                
+                <div class="topbar-right">
+                    <button id="theme-toggle" class="icon-btn">
+                        <i class="ph ph-moon" id="theme-icon"></i>
+                    </button>
+                    
+                    <div class="custom-dropdown" id="lang-selector">
+                        <button class="dropdown-toggle icon-btn glass-effect" id="lang-btn">
+                            <i class="ph ph-translate"></i>
+                            <span id="current-lang" class="lang-text">KH</span>
+                        </button>
+                        <div class="dropdown-menu glass-effect hidden">
+                            <a href="#" class="dropdown-item active" data-lang="kh">ខ្មែរ (Khmer)</a>
+                            <a href="#" class="dropdown-item" data-lang="en">English</a>
+                        </div>
+                    </div>
+                    
+                    <div class="user-profile glass-effect">
+                        <img src="" alt="User" id="tg-avatar" class="hidden">
+                        <i class="ph ph-user-circle" id="tg-avatar-placeholder"></i>
+                        <span id="tg-username">...</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="views-container">
+                
+                <section id="dashboard-view" class="view-section active">
+                    <div class="stat-grid">
+                        <div class="stat-card glass-effect">
+                            <div class="stat-icon"><i class="ph ph-users-three"></i></div>
+                            <div class="stat-info">
+                                <h3 data-i18n="stat_workers">កម្មករសរុប</h3>
+                                <p class="stat-value" id="stat-total-workers">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card glass-effect">
+                            <div class="stat-icon advance"><i class="ph ph-hand-coins"></i></div>
+                            <div class="stat-info">
+                                <h3 data-i18n="stat_advance">ប្រាក់បើកមុនសរុប</h3>
+                                <p class="stat-value" id="stat-total-advance">0 ៛</p>
+                            </div>
+                        </div>
+                    </div>
+                    </section>
+
+                <section id="workers-view" class="view-section hidden">
+                    <div class="section-action-header">
+                        <h2 data-i18n="title_workers">បញ្ជីឈ្មោះកម្មករ</h2>
+                        <button id="open-add-worker" class="primary-btn">
+                            <i class="ph ph-plus"></i> <span data-i18n="btn_add_worker">បន្ថែមកម្មករ</span>
+                        </button>
+                    </div>
+                    <div class="table-container glass-effect">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th data-i18n="col_name">ឈ្មោះ</th>
+                                    <th data-i18n="col_salary">ប្រាក់ថ្ងៃ</th>
+                                    <th data-i18n="col_action" class="align-right">សកម្មភាព</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workers-tbody">
+                                </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section id="attendance-view" class="view-section hidden">
+                    <div class="section-action-header">
+                        <h2 data-i18n="title_attendance">កត់ត្រាអវត្តមាន</h2>
+                        <div class="date-badge glass-effect">
+                            <i class="ph ph-calendar"></i> <span id="today-date">...</span>
+                        </div>
+                    </div>
+                    <div class="grid-cards" id="attendance-grid">
+                        </div>
+                </section>
+
+                <section id="borrow-view" class="view-section hidden">
+                    <div class="section-action-header">
+                        <h2 data-i18n="title_advance">កត់ត្រាការបើកលុយមុន</h2>
+                    </div>
+                    <div class="grid-cards" id="borrow-grid">
+                        </div>
+                </section>
+
+                <section id="report-view" class="view-section hidden">
+                    <div class="section-action-header">
+                        <h2 data-i18n="title_report">របាយការណ៍ប្រាក់ខែសប្តាហ៍នេះ</h2>
+                        <button class="secondary-btn glass-effect" id="print-report">
+                            <i class="ph ph-printer"></i> <span data-i18n="btn_print">បោះពុម្ព</span>
+                        </button>
+                    </div>
+                    <div class="table-container glass-effect">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th data-i18n="col_name">ឈ្មោះ</th>
+                                    <th data-i18n="col_working_days">ថ្ងៃធ្វើការ</th>
+                                    <th data-i18n="col_advance">បើកមុន</th>
+                                    <th data-i18n="col_total_pay" class="align-right text-primary">លុយត្រូវបើក</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-tbody">
+                                </tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <div id="add-worker-modal" class="modal-overlay glass-effect hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 data-i18n="modal_add_worker_title">បន្ថែមកម្មករថ្មី</h3>
+                <button class="close-modal icon-btn"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc" data-i18n="modal_add_worker_desc">វាយឈ្មោះ និងប្រាក់ថ្ងៃ។ អ្នកអាចបន្ថែមច្រើននាក់ដោយចុះបន្ទាត់។</p>
+                <div class="input-group">
+                    <textarea id="worker-multi-input" rows="5" placeholder="ឧទាហរណ៍៖&#10;សុខា 80000&#10;មករា 75000" required></textarea>
+                </div>
+                <button class="primary-btn full-width mt-1" id="save-workers-btn">
+                    <i class="ph ph-floppy-disk"></i> <span data-i18n="btn_save">រក្សាទុក</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay glass-effect hidden">
+        <div class="modal-content small-modal">
+            <div class="modal-body text-center">
+                <div class="warning-icon"><i class="ph ph-warning-circle"></i></div>
+                <h3 id="confirm-title">តើអ្នកប្រាកដទេ?</h3>
+                <p id="confirm-desc" class="modal-desc">ទិន្នន័យនឹងត្រូវបានលុបជាអចិន្ត្រៃយ៍។</p>
+                <div class="flex-actions mt-2">
+                    <button class="secondary-btn glass-effect close-confirm" data-i18n="btn_cancel">បោះបង់</button>
+                    <button class="danger-btn" id="confirm-action-btn" data-i18n="btn_confirm">យល់ព្រម</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

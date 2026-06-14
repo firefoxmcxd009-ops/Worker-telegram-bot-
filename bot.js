@@ -34,6 +34,22 @@ app.get("/", (req, res) => res.send("Multi-Project Worker Bot with MongoDB is Ru
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT} 🌐`));
 
+// បន្ថែមក្នុង bot.js ក្រោមផ្នែក Express
+app.get("/api/dashboard-data", async (req, res) => {
+    const userId = req.query.userId;
+    // រកមើល Session ដែលមាន userId នេះ
+    const session = await Session.findOne({ chatId: userId });
+    if (!session) return res.json({ success: false });
+
+    const account = await Account.findOne({ id: session.projectId });
+    res.json({
+        success: true,
+        projectName: account.projectName,
+        id: account.id,
+        workers: account.workers
+    });
+});
+
 /*
 ========================================
 MONGODB CONNECTION
