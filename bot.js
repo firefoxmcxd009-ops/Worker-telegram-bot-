@@ -50,6 +50,30 @@ app.get("/api/dashboard-data", async (req, res) => {
     });
 });
 
+const cors = require('cors');
+app.use(cors());
+app.use(express.json());
+
+// API សម្រាប់ទាញយកទិន្នន័យកម្មករ
+app.get("/api/dashboard-data", async (req, res) => {
+    const userId = req.query.userId;
+    try {
+        // រកមើល Account ដែលមាន creatorId នេះ
+        const account = await Account.findOne({ creatorId: userId });
+        if (!account) return res.json({ success: false, message: "មិនទាន់មានគណនី" });
+
+        res.json({
+            success: true,
+            projectName: account.projectName,
+            id: account.id,
+            workers: account.workers,
+            totalAdvance: Object.values(account.borrows || {}).reduce((a, b) => a + b, 0)
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 /*
 ========================================
 MONGODB CONNECTION

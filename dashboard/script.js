@@ -92,12 +92,32 @@ async function initApp() {
 }
 
 // Rendering Logic
+// កែសម្រួល function renderDashboard ក្នុង script.js
 function renderDashboard() {
-    document.getElementById('stat-total-workers').innerText = userData.workers.length;
+    // ដាក់ឈ្មោះប្រូជេក និង ID
     document.getElementById('display-proj-name').innerText = userData.projectName;
     document.getElementById('display-proj-id').innerText = userData.id;
-    document.getElementById('tg-username').innerText = tg.initDataUnsafe?.user?.first_name || "User";
+    
+    // ដាក់ទិន្នន័យស្ថិតិ
+    document.getElementById('stat-total-workers').innerText = userData.workers.length;
+    document.getElementById('stat-total-advance').innerText = userData.totalAdvance.toLocaleString() + " ៛";
+
+    // បង្ហាញឈ្មោះ User ពី Telegram
+    const firstName = tg.initDataUnsafe?.user?.first_name || "User";
+    document.getElementById('tg-username').innerText = firstName;
+    
+    // បង្ហាញបញ្ជីកម្មករក្នុង Table
+    const tbody = document.getElementById('workers-tbody');
+    tbody.innerHTML = userData.workers.map((w, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${w.name}</td>
+            <td>${w.salary.toLocaleString()}៛</td>
+            <td class="align-right"><i class="ph ph-dots-three-vertical"></i></td>
+        </tr>
+    `).join('');
 }
+
 
 // Navigation
 document.querySelectorAll('.nav-item').forEach(nav => {
