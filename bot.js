@@ -152,7 +152,7 @@ const MAIN_INLINE_KEYBOARD = [
     [{ text: "📝 កត់អវត្តមាន", callback_data: "main_absence" }, { text: "📋 មើលអវត្តមាន", callback_data: "main_view_absence" }],
     [{ text: "💸 បើកលុយមុន", callback_data: "main_borrow" }, { text: "👷 បញ្ជីកម្មករ", callback_data: "main_listworkers" }],
     [{ text: "✍️ បន្ថែមកម្មករ", callback_data: "main_addworker" }, { text: "🗑 លុបកម្មករ", callback_data: "main_deleteworker" }],
-    [{ text: "💰 មើលរបាយការណ៍ប្រាក់ខែ", callback_data: "main_report" }]
+    [{ text: "💰 មើលរបាយការណ៍ប្រាក់ខែ", callback_data: "main_report" }],
     [{ 
         text: "🌐 បើក Dashboard", 
         web_app: { url: "https://worker-telegram-bot-nwoq.onrender.com/dashboard/index.html" } 
