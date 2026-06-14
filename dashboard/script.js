@@ -110,6 +110,38 @@ document.querySelectorAll('.nav-item').forEach(nav => {
         document.getElementById(target).classList.remove('hidden');
     });
 });
+// កែសម្រួល Navigation (ដើម្បីឱ្យ Sidebar បិទ/បើកបាន និងដូរ View)
+document.getElementById('menu-toggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.add('open');
+});
+
+document.getElementById('close-sidebar').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('open');
+});
+
+// កូដសម្រាប់ចុច Menu ក្នុង Sidebar ឱ្យដូរផ្ទាំង (View)
+document.querySelectorAll('.nav-item').forEach(nav => {
+    nav.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        // ដក Active ពីគ្រប់ Menu
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        // ដាក់ Active លើ Menu ដែលចុច
+        nav.classList.add('active');
+        
+        // បិទ Sidebar បន្ទាប់ពីចុច (សម្រាប់ Mobile)
+        document.getElementById('sidebar').classList.remove('open');
+        
+        // ប្តូរ View
+        const targetId = nav.getAttribute('data-target');
+        document.querySelectorAll('.view-section').forEach(s => s.classList.add('hidden'));
+        document.getElementById(targetId).classList.remove('hidden');
+        
+        // ប្តូរ Title នៅលើ Topbar
+        const titleText = nav.querySelector('span').innerText;
+        document.getElementById('page-title').innerText = titleText;
+    });
+});
 
 // Start the app
 initApp();
