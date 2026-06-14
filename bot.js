@@ -4,6 +4,7 @@ const express = require("express");
 const cron = require("node-cron");
 const TelegramBot = require("node-telegram-bot-api");
 const mongoose = require("mongoose");
+const path = require("path");
 
 /*
 ========================================
@@ -21,12 +22,17 @@ if (!TOKEN) {
 
 /*
 ========================================
-EXPRESS SERVER
+EXPRESS SERVER & WEB DASHBOARD
 ========================================
 */
 const app = express();
+
+// បើកឱ្យ Express អាច Serve ឯកសារ HTML/CSS/JS នៅក្នុង Folder "dashboard" 
+app.use("/dashboard", express.static(path.join(__dirname, "dashboard")));
+
 app.get("/", (req, res) => res.send("Multi-Project Worker Bot with MongoDB is Running ✅"));
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT} 🌐`));
 
 /*
 ========================================
@@ -68,7 +74,7 @@ TELEGRAM BOT
 ========================================
 */
 const bot = new TelegramBot(TOKEN, { polling: true });
-console.log("Bot Started");
+console.log("Telegram Bot Started 🚀");
 
 bot.setMyCommands([
     { command: "start", description: "🚀 ចាប់ផ្តើម / ម៉ឺនុយមេ" },
@@ -201,6 +207,7 @@ bot.onText(/^\/logout$/, async (msg) => {
 });
 
 bot.onText(/^\/myprojects$/, async (msg) => {
+    delete userSessions[msg.chat.id]; // Clear any pending text input state
     const creatorId = String(msg.from.id);
     const projects = await Account.find({ creatorId: creatorId });
     
@@ -234,7 +241,7 @@ bot.onText(/^\/addworker$/, async (msg) => {
     const session = await Session.findOne({ chatId: String(msg.chat.id) });
     if (!session) return sendAuthRequired(msg.chat.id, msg.from.id);
     userSessions[msg.chat.id] = { state: "AWAITING_WORKER_DETAILS" };
-    return bot.sendMessage(msg.chat.id, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី៖\n\n*ទម្រង់វាយ៖* `ឈ្មោះ ប្រាក់ឈ្នួល`\n*ឧទាហរណ៍៖* `សុខា 80000`", { parse_mode: "Markdown" });
+    return bot.sendMessage(msg.chat.id, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី (អាចបញ្ចូលច្រើននាក់បានដោយចុះបន្ទាត់)៖\n\n*ទម្រង់វាយ៖*\n`ឈ្មោះទី១ ប្រាក់ថ្ងៃ`\n`ឈ្មោះទី២ ប្រាក់ថ្ងៃ`\n\n*ឧទាហរណ៍៖*\n`សុខា 80000`\n`មករា 75000`", { parse_mode: "Markdown" });
 });
 
 bot.onText(/^\/report$/, async (msg) => {
@@ -276,6 +283,11 @@ bot.on("callback_query", async (query) => {
     const data = query.data;
 
     try {
+        // Clear Text State on any button click to avoid overlap bugs
+        if (!data.startsWith("auth_") && !data.startsWith("main_addworker") && !data.startsWith("borrow_select_")) {
+            delete userSessions[chatId]; 
+        }
+
         if (data === "main_logout") {
             await handleLogout(chatId);
             return sendAuthRequired(chatId, telegramId);
@@ -300,14 +312,12 @@ bot.on("callback_query", async (query) => {
             return sendMainMenu(chatId, account.projectName, account.id);
         }
 
-        // ការងារចុចលើប៊ូតុងប្រូជេកពី /myprojects (បិទ Mask Animation & Add Copy Function)
         if (data.startsWith("view_proj_")) {
             const projId = data.replace("view_proj_", "");
             const project = await Account.findOne({ id: projId, creatorId: String(telegramId) });
 
             if (!project) return bot.answerCallbackQuery(query.id, { text: "❌ រកមិនឃើញប្រូជេកនេះទេ" });
 
-            // ប្រើ <tg-spoiler> ជាមួយ <code> ដើម្បីឱ្យអ្នកប្រើអាចចុចមើល ហើយចុច Copy ងាយស្រួល
             const text = `📁 <b>ព័ត៌មានលម្អិតប្រូជេក</b>\n\n` +
                          `🏗 ឈ្មោះប្រូជេក៖ <b>${project.projectName}</b>\n` +
                          `🔑 Project ID: <tg-spoiler><code>${project.id}</code></tg-spoiler>\n` +
@@ -339,14 +349,14 @@ bot.on("callback_query", async (query) => {
         }
 
         const session = await Session.findOne({ chatId: String(chatId) });
-        if (!session) return sendAuthRequired(chatId, telegramId);
+        if (!session && !data.startsWith("auth_")) return sendAuthRequired(chatId, telegramId);
 
-        const account = await Account.findOne({ id: session.projectId });
-        if (!account) return sendAuthRequired(chatId, telegramId);
+        const account = await Account.findOne({ id: session?.projectId });
+        if (!account && !data.startsWith("auth_")) return sendAuthRequired(chatId, telegramId);
 
         if (data === "main_addworker") {
             userSessions[chatId] = { state: "AWAITING_WORKER_DETAILS" };
-            return bot.sendMessage(chatId, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី៖\n\n*ទម្រង់វាយ៖* `ឈ្មោះ ប្រាក់ឈ្នួល`\n*ឧទាហរណ៍៖* `សុខា 80000`", { parse_mode: "Markdown" });
+            return bot.sendMessage(chatId, "✍️ សូមវាយបញ្ចូលឈ្មោះ និងប្រាក់ថ្ងៃរបស់កម្មករថ្មី (អាចបញ្ចូលច្រើននាក់បានដោយចុះបន្ទាត់)៖\n\n*ទម្រង់វាយ៖*\n`ឈ្មោះទី១ ប្រាក់ថ្ងៃ`\n`ឈ្មោះទី២ ប្រាក់ថ្ងៃ`\n\n*ឧទាហរណ៍៖*\n`សុខា 80000`\n`មករា 75000`", { parse_mode: "Markdown" });
         }
 
         if (data === "main_listworkers") {
@@ -546,7 +556,6 @@ bot.on("message", async (msg) => {
         );
         delete userSessions[chatId];
 
-        // ប្រើ <tg-spoiler> ជាមួយ <code> ដើម្បីឱ្យអ្នកប្រើអាចចុចមើល ហើយចុច Copy ងាយស្រួល
         const successText = `🎉 <b>បង្កើតប្រូជេកបានជោគជ័យ!</b>\n\n` +
                             `🏗 ឈ្មោះប្រូជេក៖ <b>${projName}</b>\n` +
                             `🔑 Project ID៖ <tg-spoiler><code>${nextProjectId}</code></tg-spoiler> <i>(ចាំលេខកូដនេះសម្រាប់ Login)</i>\n` +
@@ -587,23 +596,58 @@ bot.on("message", async (msg) => {
     if (!account) return sendAuthRequired(chatId, telegramId);
 
     if (sessionState.state === "AWAITING_WORKER_DETAILS") {
-        const match = text.match(/^(.+)\s+(\d+)$/);
-        if (!match) return bot.sendMessage(chatId, "❌ ទម្រង់មិនត្រូវទេ! សូមវាយម្តងទៀត៖ `ឈ្មោះ ប្រាក់ថ្ងៃ` (ឧទាហរណ៍៖ `សុខា 80000`)");
-
-        const name = match[1].trim();
-        const salary = Number(match[2]);
-        const newId = account.workers.length > 0 ? Math.max(...account.workers.map(w => w.id)) + 1 : 1;
+        const lines = text.split('\n'); 
+        let addedWorkers = [];
+        let errors = [];
         
-        account.workers.push({ id: newId, name, dailySalary: salary });
+        let currentMaxId = account.workers.length > 0 ? Math.max(...account.workers.map(w => w.id)) : 0;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue; 
+
+            const match = line.match(/^(.+)\s+(\d+)$/);
+            if (!match) {
+                errors.push(`បន្ទាត់ទី ${i + 1} ("${line}") ខុសទម្រង់។`);
+                continue;
+            }
+
+            const name = match[1].trim();
+            const salary = Number(match[2]);
+            
+            if (salary <= 0) {
+                errors.push(`បន្ទាត់ទី ${i + 1} ("${line}") ចំនួនទឹកប្រាក់មិនត្រឹមត្រូវ។`);
+                continue;
+            }
+
+            currentMaxId++; 
+            const newWorker = { id: currentMaxId, name, dailySalary: salary };
+            account.workers.push(newWorker);
+            addedWorkers.push(newWorker);
+        }
+
+        if (addedWorkers.length === 0) {
+             return bot.sendMessage(chatId, "❌ មិនមានទិន្នន័យត្រឹមត្រូវទេ! សូមវាយម្តងទៀត (ឧទាហរណ៍៖ `សុខា 80000`)", { parse_mode: "Markdown" });
+        }
+
         await account.save();
         delete userSessions[chatId];
         
-        return bot.sendMessage(chatId, `✅ បានបន្ថែមកម្មករជោគជ័យ៖\n\n👤 ឈ្មោះ: **${name}**\n💰 ប្រាក់ថ្ងៃ: **${salary.toLocaleString()}៛**`, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
+        let replyMsg = `✅ **បានបន្ថែមកម្មករថ្មីចំនួន ${addedWorkers.length} នាក់ជោគជ័យ៖**\n\n`;
+        addedWorkers.forEach(w => {
+            replyMsg += `• 👤 **${w.name}** | 💰 **${w.dailySalary.toLocaleString()}៛**\n`;
+        });
+
+        if (errors.length > 0) {
+            replyMsg += `\n⚠️ **បញ្ហាមួយចំនួន (មិនបានបន្ថែម)៖**\n${errors.join('\n')}`;
+        }
+
+        return bot.sendMessage(chatId, replyMsg, { parse_mode: "Markdown", reply_markup: { inline_keyboard: MAIN_INLINE_KEYBOARD } });
     }
 
     if (sessionState.state === "AWAITING_BORROW_AMOUNT") {
         const amount = Number(text);
-        if (isNaN(amount) || amount <= 0) return bot.sendMessage(chatId, "❌ សូមវាយបញ្ចូលតែចំនួនលេខទឹកប្រាក់ប៉ុណ្ណោះ!");
+        if (isNaN(amount) || amount <= 0) return bot.sendMessage(chatId, "❌ សូមវាយបញ្ចូលតែចំនួនលេខទឹកប្រាក់ប៉ុណ្ណោះ! (ឧទាហរណ៍៖ 10000)");
 
         const workerId = sessionState.workerId;
         const worker = account.workers.find(w => w.id === workerId);
@@ -627,9 +671,9 @@ CRON SCHEDULES
 cron.schedule("0 0 * * 0", async () => {
     try {
         await Account.updateMany({}, { $set: { attendance: {}, borrows: {} } });
-        console.log("All projects reset successfully.");
+        console.log("All projects reset successfully for the new week.");
     } catch (err) { console.error("Cron job error:", err); }
 }, { timezone: "Asia/Phnom_Penh" });
 
-bot.on("polling_error", err => console.error(err.message));
-process.on("uncaughtException", err => console.error(err));
+bot.on("polling_error", err => console.error("Polling error:", err.message));
+process.on("uncaughtException", err => console.error("Uncaught Exception:", err));
